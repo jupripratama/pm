@@ -1,0 +1,6 @@
+@Pm_HostAddress = http://localhost:5116
+
+GET {{Pm_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

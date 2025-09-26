@@ -13,6 +13,8 @@ namespace Pm.Data
         public DbSet<Role> Roles { get; set; }
         public DbSet<Permission> Permissions { get; set; }
         public DbSet<RolePermission> RolePermissions { get; set; }
+        public DbSet<CallRecord> CallRecords { get; set; }
+        public DbSet<CallSummary> CallSummaries { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -24,7 +26,7 @@ namespace Pm.Data
                 entity.HasKey(e => e.UserId);
                 entity.HasIndex(e => e.Username).IsUnique();
                 entity.HasIndex(e => e.Email).IsUnique();
-                
+
                 entity.HasOne(u => u.Role)
                       .WithMany(r => r.Users)
                       .HasForeignKey(u => u.RoleId)
@@ -50,7 +52,7 @@ namespace Pm.Data
             modelBuilder.Entity<RolePermission>(entity =>
             {
                 entity.HasKey(e => e.RolePermissionId);
-                
+
                 entity.HasOne(rp => rp.Role)
                       .WithMany(r => r.RolePermissions)
                       .HasForeignKey(rp => rp.RoleId)
@@ -64,6 +66,28 @@ namespace Pm.Data
                 // Unique constraint untuk kombinasi RoleId dan PermissionId
                 entity.HasIndex(e => new { e.RoleId, e.PermissionId }).IsUnique();
             });
+
+            // CallRecord Configuration
+            modelBuilder.Entity<CallRecord>(entity =>
+            {
+                entity.HasKey(e => e.CallRecordId);
+                entity.HasIndex(e => new { e.CallDate, e.CallTime });
+                entity.HasIndex(e => e.CallCloseReason);
+                entity.HasIndex(e => e.HourGroup);
+            });
+
+            // CallSummary Configuration
+            modelBuilder.Entity<CallSummary>(entity =>
+            {
+                entity.HasKey(e => e.CallSummaryId);
+                entity.HasIndex(e => new { e.SummaryDate, e.HourGroup }).IsUnique();
+
+                entity.Property(e => e.TEBusyPercent).HasColumnType("decimal(5,2)");
+                entity.Property(e => e.SysBusyPercent).HasColumnType("decimal(5,2)");
+                entity.Property(e => e.OthersPercent).HasColumnType("decimal(5,2)");
+            });
+
+
 
             // Seed Data
             SeedData(modelBuilder);

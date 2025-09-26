@@ -27,9 +27,9 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo 
     { 
-        Title = "Your Project API", 
+        Title = "PM MKN API", 
         Version = "v1",
-        Description = "API Documentation for Your Project"
+        Description = "API PM & Documentation"
     });
 
     // Add JWT Authentication to Swagger
@@ -171,7 +171,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Your Project API V1");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1");
         c.RoutePrefix = string.Empty; // Makes Swagger UI available at app's root
     });
 }

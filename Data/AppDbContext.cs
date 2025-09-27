@@ -16,6 +16,16 @@ namespace Pm.Data
         public DbSet<CallRecord> CallRecords { get; set; }
         public DbSet<CallSummary> CallSummaries { get; set; }
 
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            if (!optionsBuilder.IsConfigured)
+            {
+                // Add performance optimizations for large data
+                optionsBuilder.EnableSensitiveDataLogging(false)
+                            .EnableDetailedErrors(false);
+            }
+        }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -67,21 +77,34 @@ namespace Pm.Data
                 entity.HasIndex(e => new { e.RoleId, e.PermissionId }).IsUnique();
             });
 
-            // CallRecord Configuration
+            // CallRecord Configuration dengan optimasi
             modelBuilder.Entity<CallRecord>(entity =>
-            {
+            {                                                                   
                 entity.HasKey(e => e.CallRecordId);
-                entity.HasIndex(e => new { e.CallDate, e.CallTime });
-                entity.HasIndex(e => e.CallCloseReason);
-                entity.HasIndex(e => e.HourGroup);
-            });
+                
+                // Composite index untuk query yang sering dipakai
+                entity.HasIndex(e => new { e.CallDate, e.CallTime })
+                    .HasDatabaseName("IX_CallRecord_DateTime");
+                    
+                entity.HasIndex(e => e.CallCloseReason)
+                    .HasDatabaseName("IX_CallRecord_CloseReason");
+                    
+                entity.HasIndex(e => e.CallDate)
+                    .HasDatabaseName("IX_CallRecord_Date");
+                    
+                // Index untuk hour-based queries
+                entity.HasIndex("CallDate", "CallTime")
+                    .HasDatabaseName("IX_CallRecord_HourQuery");
+            });                                                                                                                                                                                                                                                                                                                                                                                                                                       
 
-            // CallSummary Configuration
+            // CallSummary dengan partitioning hint
             modelBuilder.Entity<CallSummary>(entity =>
             {
                 entity.HasKey(e => e.CallSummaryId);
-                entity.HasIndex(e => new { e.SummaryDate, e.HourGroup }).IsUnique();
-
+                entity.HasIndex(e => new { e.SummaryDate, e.HourGroup })
+                    .IsUnique()
+                    .HasDatabaseName("IX_CallSummary_DateHour");
+                
                 entity.Property(e => e.TEBusyPercent).HasColumnType("decimal(5,2)");
                 entity.Property(e => e.SysBusyPercent).HasColumnType("decimal(5,2)");
                 entity.Property(e => e.OthersPercent).HasColumnType("decimal(5,2)");
@@ -90,7 +113,7 @@ namespace Pm.Data
 
 
             // Seed Data
-            SeedData(modelBuilder);
+            // SeedData(modelBuilder);
         }
 
         private void SeedData(ModelBuilder modelBuilder)

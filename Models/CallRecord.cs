@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Pm.Models
 {
@@ -18,9 +19,11 @@ namespace Pm.Models
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
-        public int HourGroup => CallTime.Hours;
+       // Method untuk mendapatkan HourGroup (bukan property)
+        public int GetHourGroup() => CallTime.Hours;
         
-        public string CloseReasonDescription => CallCloseReason switch
+        // Method untuk mendapatkan description (bukan property)
+        public string GetCloseReasonDescription() => CallCloseReason switch
         {
             0 => "TE Busy",
             1 => "Sys Busy",

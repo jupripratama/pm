@@ -141,6 +141,8 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<ICallRecordService, CallRecordService>();
+builder.Services.AddScoped<IExcelExportService, ExcelExportService>();
 
 // Add FluentValidation
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();

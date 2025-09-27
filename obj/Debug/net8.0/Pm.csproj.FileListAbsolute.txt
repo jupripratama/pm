@@ -144,3 +144,4 @@ D:\C#\PM\Pm\obj\Debug\net8.0\refint\Pm.dll
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.pdb
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.genruntimeconfig.cache
 D:\C#\PM\Pm\obj\Debug\net8.0\ref\Pm.dll
+d:\C#\PM\Pm\obj\Debug\net8.0\Pm.sourcelink.json

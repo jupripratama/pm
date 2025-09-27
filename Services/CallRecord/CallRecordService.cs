@@ -4,6 +4,7 @@ using Pm.Data;
 using Pm.DTOs.CallRecord;
 using Pm.DTOs.Common;
 using Pm.Models;
+using System.Globalization;
 
 namespace Pm.Services
 {
@@ -24,91 +25,144 @@ namespace Pm.Services
             var errors = new List<string>();
             var callRecords = new List<CallRecord>();
 
-            try
+        try
+        {
+            using var reader = new StreamReader(csvStream, encoding: System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            
+            _logger.LogInformation("Processing large CSV file {FileName}", fileName);
+            
+            var lineNumber = 0;
+            var batchSize = 1000; // Process in batches
+            var currentBatch = new List<CallRecord>();
+
+            string? line;
+            while ((line = await reader.ReadLineAsync()) != null)
             {
-                using var reader = new StreamReader(csvStream);
-                var csvContent = await reader.ReadToEndAsync();
+                lineNumber++;
+
+                // Split merged rows if needed
+                var rows = SplitMergedLine(line);
                 
-                var allRows = SplitCsvContent(csvContent);
-                response.TotalRecords = allRows.Count;
-
-                _logger.LogInformation("Processing {Count} records from {FileName}", allRows.Count, fileName);
-
-                foreach (var (row, index) in allRows.Select((r, i) => (r, i)))
+                foreach (var row in rows)
                 {
                     try
                     {
-                        var callRecord = ParseCsvRow(row, index + 1);
+                        var callRecord = ParseCsvRow(row, lineNumber);
                         if (callRecord != null)
                         {
-                            callRecords.Add(callRecord);
+                            currentBatch.Add(callRecord);
                             response.SuccessfulRecords++;
+
+                            // Save in batches to avoid memory issues
+                            if (currentBatch.Count >= batchSize)
+                            {
+                                await SaveBatchAsync(currentBatch);
+                                currentBatch.Clear();
+                            }
                         }
                         else
                         {
                             response.FailedRecords++;
-                            errors.Add($"Row {index + 1}: Invalid data format");
+                            if (errors.Count < 100) // Limit error collection
+                            {
+                                errors.Add($"Row {lineNumber}: Invalid data format");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         response.FailedRecords++;
-                        errors.Add($"Row {index + 1}: {ex.Message}");
-                        _logger.LogWarning(ex, "Error processing row {RowIndex}", index + 1);
-                    }
-                }
-
-                if (callRecords.Any())
-                {
-                    await _context.CallRecords.AddRangeAsync(callRecords);
-                    await _context.SaveChangesAsync();
-
-                    _logger.LogInformation("Saved {Count} call records to database", callRecords.Count);
-
-                    // Generate summaries for affected dates
-                    var affectedDates = callRecords.Select(cr => cr.CallDate.Date).Distinct().ToList();
-                    foreach (var date in affectedDates)
-                    {
-                        await GenerateDailySummaryAsync(date);
-                    }
-                }
-
-                response.Errors = errors;
-                return response;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error importing CSV file {FileName}", fileName);
-                response.Errors.Add($"General error: {ex.Message}");
-                return response;
-            }
-        }
-
-        private List<string> SplitCsvContent(string csvContent)
-        {
-            var rows = new List<string>();
-            var lines = csvContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            
-            foreach (var line in lines)
-            {
-                var dateMatches = Regex.Matches(line, @"\b20\d{6}\b");
-                
-                if (dateMatches.Count > 1)
-                {
-                    var parts = Regex.Split(line, @"(?=\b20\d{6}\b)");
-                    foreach (var part in parts)
-                    {
-                        if (!string.IsNullOrWhiteSpace(part.Trim()))
+                        if (errors.Count < 100)
                         {
-                            rows.Add(part.Trim());
+                            errors.Add($"Row {lineNumber}: {ex.Message}");
+                        }
+
+                        // Log first few errors in detail
+                        if (errors.Count <= 5)
+                        {
+                            _logger.LogWarning("Row {LineNumber} error: {Error}. Data: {Data}", 
+                                lineNumber, ex.Message, row.Length > 100 ? row[..100] + "..." : row);
                         }
                     }
-                }
-                else
-                {
-                    if (!string.IsNullOrWhiteSpace(line.Trim()))
+                    }
+
+                    response.TotalRecords = lineNumber;
+
+                    // Log progress every 10,000 rows
+                    if (lineNumber % 10000 == 0)
                     {
-                        rows.Add(line.Trim());
+                        _logger.LogInformation("Processed {Processed} rows, Success: {Success}, Failed: {Failed}", 
+                            lineNumber, response.SuccessfulRecords, response.FailedRecords);
+                    }
+            }
+
+                // Save remaining batch
+                if (currentBatch.Any())
+                {
+                    await SaveBatchAsync(currentBatch);
+                }
+
+                    // Generate summaries for affected dates
+                    if (response.SuccessfulRecords > 0)
+                    {
+                        var affectedDates = await _context.CallRecords
+                            .Where(cr => cr.CreatedAt >= DateTime.UtcNow.AddMinutes(-10)) // Records from this session
+                            .Select(cr => cr.CallDate.Date)
+                            .Distinct()
+                            .ToListAsync();
+
+                        _logger.LogInformation("Regenerating summaries for {DateCount} dates", affectedDates.Count);
+
+                        foreach (var date in affectedDates)
+                        {
+                            await GenerateDailySummaryAsync(date);
+                        }
+                    }
+
+                    response.Errors = errors;
+                    _logger.LogInformation("CSV import completed. Total: {Total}, Success: {Success}, Failed: {Failed}", 
+                        response.TotalRecords, response.SuccessfulRecords, response.FailedRecords);
+
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error importing large CSV file {FileName}", fileName);
+                    response.Errors.Add($"General error: {ex.Message}");
+                    return response;
+                }
+        }
+        
+        private async Task SaveBatchAsync(List<CallRecord> batch)
+        {
+            if (!batch.Any()) return;
+
+            await _context.CallRecords.AddRangeAsync(batch);
+            await _context.SaveChangesAsync();
+            
+            _logger.LogDebug("Saved batch of {Count} records", batch.Count);
+        }
+
+        private List<string> SplitMergedLine(string line)
+        {
+            var rows = new List<string>();
+            
+            // Check for multiple date patterns in one line
+            var dateMatches = Regex.Matches(line, @"\b20\d{6}\b");
+            
+            if (dateMatches.Count <= 1)
+            {
+                rows.Add(line);
+            }
+            else
+            {
+                // Split by date pattern
+                var parts = Regex.Split(line, @"(?=\b20\d{6}\b)");
+                foreach (var part in parts)
+                {
+                    if (!string.IsNullOrWhiteSpace(part.Trim()))
+                    {
+                        rows.Add(part.Trim());
                     }
                 }
             }
@@ -116,38 +170,100 @@ namespace Pm.Services
             return rows;
         }
 
+        // private List<string> SplitCsvContent(string csvContent)
+        // {
+        //     var rows = new List<string>();
+        //     var lines = csvContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+        //     foreach (var line in lines)
+        //     {
+        //         var dateMatches = Regex.Matches(line, @"\b20\d{6}\b");
+
+        //         if (dateMatches.Count > 1)
+        //         {
+        //             var parts = Regex.Split(line, @"(?=\b20\d{6}\b)");
+        //             foreach (var part in parts)
+        //             {
+        //                 if (!string.IsNullOrWhiteSpace(part.Trim()))
+        //                 {
+        //                     rows.Add(part.Trim());
+        //                 }
+        //             }
+        //         }
+        //         else
+        //         {
+        //             if (!string.IsNullOrWhiteSpace(line.Trim()))
+        //             {
+        //                 rows.Add(line.Trim());
+        //             }
+        //         }
+        //     }
+
+        //     return rows;
+        // }
+
         private CallRecord? ParseCsvRow(string csvRow, int rowNumber)
         {
             try
             {
+                // LOG: Tampilkan 5 baris pertama untuk debug
+                if (rowNumber <= 5)
+                {
+                    _logger.LogInformation("Row {RowNumber} raw data: '{CsvRow}'", rowNumber, csvRow);
+                }
+
+                // Clean row dari characters aneh
+                csvRow = csvRow.Trim().Trim('\r', '\n');
+                
                 var fields = csvRow.Split(',');
+                
+                // LOG: Tampilkan jumlah field dan 3 field pertama
+                if (rowNumber <= 5)
+                {
+                    _logger.LogInformation("Row {RowNumber} has {FieldCount} fields. First 3: ['{Field0}'], ['{Field1}'], ['{Field2}']", 
+                        rowNumber, fields.Length, 
+                        fields.Length > 0 ? CleanCsvField(fields[0]) : "NULL",
+                        fields.Length > 1 ? CleanCsvField(fields[1]) : "NULL", 
+                        fields.Length > 2 ? CleanCsvField(fields[2]) : "NULL");
+                }
                 
                 if (fields.Length < 3)
                 {
-                    throw new ArgumentException("Insufficient fields in CSV row");
+                    throw new ArgumentException($"Insufficient fields: only {fields.Length} fields found");
                 }
 
-                // Extract date (first field)
-                var dateField = fields[0].Trim();
-                if (!DateTime.TryParseExact(dateField, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var callDate))
+                // Clean date field
+                var dateField = CleanCsvField(fields[0]);
+                if (string.IsNullOrEmpty(dateField))
                 {
-                    throw new ArgumentException($"Invalid date format: {dateField}");
+                    throw new ArgumentException("Date field is empty");
+                }
+                
+                if (!DateTime.TryParseExact(dateField, "yyyyMMdd", null, DateTimeStyles.None, out var callDate))
+                {
+                    throw new ArgumentException($"Invalid date format: '{dateField}' (length: {dateField.Length})");
                 }
 
-                // Extract time (second field)
-                var timeField = fields[1].Trim();
+                // Clean time field  
+                var timeField = CleanCsvField(fields[1]);
+                if (string.IsNullOrEmpty(timeField))
+                {
+                    throw new ArgumentException("Time field is empty");
+                }
+                
                 if (!TimeSpan.TryParse(timeField, out var callTime))
                 {
-                    throw new ArgumentException($"Invalid time format: {timeField}");
+                    throw new ArgumentException($"Invalid time format: '{timeField}'");
                 }
 
-                // Extract call close reason from second-to-last field
+                // Get close reason dengan lebih detail logging
                 int callCloseReason = -1;
+                string reasonField = "";
                 
                 if (fields.Length >= 2)
                 {
-                    var secondLastField = fields[fields.Length - 2].Trim();
-                    if (int.TryParse(secondLastField, out int secondLastValue))
+                    reasonField = CleanCsvField(fields[fields.Length - 2]);
+                    if (int.TryParse(reasonField, out int secondLastValue))
                     {
                         callCloseReason = secondLastValue;
                     }
@@ -155,8 +271,8 @@ namespace Pm.Services
                 
                 if (callCloseReason == -1 && fields.Length >= 1)
                 {
-                    var lastField = fields[fields.Length - 1].Trim();
-                    if (int.TryParse(lastField, out int lastValue))
+                    reasonField = CleanCsvField(fields[fields.Length - 1]);
+                    if (int.TryParse(reasonField, out int lastValue))
                     {
                         callCloseReason = lastValue;
                     }
@@ -164,7 +280,7 @@ namespace Pm.Services
 
                 if (callCloseReason == -1)
                 {
-                    throw new ArgumentException("Invalid call close reason in row");
+                    throw new ArgumentException($"Invalid call close reason: '{reasonField}' from field count {fields.Length}");
                 }
 
                 return new CallRecord
@@ -181,6 +297,19 @@ namespace Pm.Services
                 return null;
             }
         }
+
+        private string CleanCsvField(string field)
+            {
+                if (string.IsNullOrWhiteSpace(field))
+                    return "";
+                    
+                return field.Trim()
+                            .Trim('"')
+                            .Trim('\'')
+                            .Trim()
+                            .Replace("\r", "")
+                            .Replace("\n", "");
+            }
 
         public async Task<PagedResultDto<CallRecordDto>> GetCallRecordsAsync(CallRecordQueryDto query)
         {
@@ -204,7 +333,8 @@ namespace Pm.Services
 
             if (query.HourGroup.HasValue)
             {
-                dbQuery = dbQuery.Where(cr => cr.HourGroup == query.HourGroup.Value);
+                var targetHour = query.HourGroup.Value;
+                dbQuery = dbQuery.Where(cr => cr.CallTime.Hours == targetHour);
             }
 
             if (!string.IsNullOrEmpty(query.Search))
@@ -382,8 +512,8 @@ namespace Pm.Services
 
             for (int hour = 0; hour < 24; hour++)
             {
-                var callsInHour = await _context.CallRecords
-                    .Where(cr => cr.CallDate.Date == date.Date && cr.HourGroup == hour)
+                 var callsInHour = await _context.CallRecords
+                    .Where(cr => cr.CallDate.Date == date.Date && cr.CallTime.Hours == hour)
                     .ToListAsync();
 
                 var teBusyCount = callsInHour.Count(cr => cr.CallCloseReason == 0);
@@ -477,8 +607,8 @@ namespace Pm.Services
             CallDate = callRecord.CallDate,
             CallTime = callRecord.CallTime,
             CallCloseReason = callRecord.CallCloseReason,
-            CloseReasonDescription = callRecord.CloseReasonDescription,
-            HourGroup = callRecord.HourGroup,
+            CloseReasonDescription = callRecord.GetCloseReasonDescription(),
+            HourGroup = callRecord.GetHourGroup(),
             CreatedAt = callRecord.CreatedAt
         };
     }

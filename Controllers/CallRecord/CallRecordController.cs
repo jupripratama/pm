@@ -18,6 +18,46 @@ namespace Pm.Controllers
             _logger = logger;
         }
 
+        private static readonly Dictionary<string, ImportProgress> _importProgress = new();
+
+        public class ImportProgress
+        {
+            public string FileName { get; set; } = "";
+            public int TotalRows { get; set; }
+            public int ProcessedRows { get; set; }
+            public int SuccessfulRows { get; set; }
+            public int FailedRows { get; set; }
+            public DateTime StartTime { get; set; }
+            public bool IsCompleted { get; set; }
+        }
+
+        [HttpGet("import-progress/{sessionId}")]
+        public IActionResult GetImportProgress(string sessionId)
+        {
+            if (_importProgress.TryGetValue(sessionId, out var progress))
+            {
+                var elapsed = DateTime.UtcNow - progress.StartTime;
+                var estimatedTotal = progress.ProcessedRows > 0 
+                    ? elapsed.TotalSeconds * progress.TotalRows / progress.ProcessedRows 
+                    : 0;
+
+                return Ok(new
+                {
+                    fileName = progress.FileName,
+                    totalRows = progress.TotalRows,
+                    processedRows = progress.ProcessedRows,
+                    successfulRows = progress.SuccessfulRows,
+                    failedRows = progress.FailedRows,
+                    percentComplete = progress.TotalRows > 0 ? (double)progress.ProcessedRows / progress.TotalRows * 100 : 0,
+                    elapsedSeconds = elapsed.TotalSeconds,
+                    estimatedRemainingSeconds = estimatedTotal - elapsed.TotalSeconds,
+                    isCompleted = progress.IsCompleted
+                });
+            }
+
+            return NotFound(new { message = "Import session not found" });
+        }
+
         /// <summary>
         /// Upload dan import file CSV call records
         /// </summary>
@@ -25,46 +65,68 @@ namespace Pm.Controllers
         public async Task<IActionResult> ImportCsv(IFormFile file)
         {
             if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "File tidak boleh kosong" });
+        }
+
+        // Increase file size limit untuk large files (100MB)
+        if (file.Length > 100 * 1024 * 1024)
+        {
+            return BadRequest(new { message = "Ukuran file maksimal 100MB" });
+        }
+
+        var sessionId = Guid.NewGuid().ToString();
+        
+        try
+        {
+            // Initialize progress tracking
+            _importProgress[sessionId] = new ImportProgress
             {
-                return BadRequest(new { message = "File tidak boleh kosong" });
+                FileName = file.FileName,
+                StartTime = DateTime.UtcNow
+            };
+
+            using var stream = file.OpenReadStream();
+            var result = await _callRecordService.ImportCsvAsync(stream, file.FileName);
+
+            // Mark as completed
+            if (_importProgress.ContainsKey(sessionId))
+            {
+                _importProgress[sessionId].IsCompleted = true;
             }
 
-            if (!file.ContentType.Equals("text/csv", StringComparison.OrdinalIgnoreCase) && 
-                !file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            var message = result.SuccessfulRecords > 0 
+                ? $"Import berhasil. {result.SuccessfulRecords:N0} record berhasil diproses" 
+                : "Import gagal";
+
+            if (result.FailedRecords > 0)
             {
-                return BadRequest(new { message = "File harus berformat CSV" });
+                message += $", {result.FailedRecords:N0} record gagal diproses";
             }
 
-            if (file.Length > 50 * 1024 * 1024) // 50MB limit
+            return Ok(new
             {
-                return BadRequest(new { message = "Ukuran file maksimal 50MB" });
-            }
-
-            try
+                message = message,
+                data = result,
+                sessionId = sessionId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing large CSV file {FileName}", file.FileName);
+            
+            if (_importProgress.ContainsKey(sessionId))
             {
-                using var stream = file.OpenReadStream();
-                var result = await _callRecordService.ImportCsvAsync(stream, file.FileName);
-
-                var message = result.SuccessfulRecords > 0 
-                    ? $"Import berhasil. {result.SuccessfulRecords} record berhasil diproses" 
-                    : "Import gagal";
-
-                if (result.FailedRecords > 0)
-                {
-                    message += $", {result.FailedRecords} record gagal diproses";
-                }
-
-                return Ok(new
-                {
-                    message = message,
-                    data = result
-                });
+                _importProgress[sessionId].IsCompleted = true;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error importing CSV file {FileName}", file.FileName);
-                return StatusCode(500, new { message = "Terjadi kesalahan saat mengimport file", error = ex.Message });
-            }
+            
+            return StatusCode(500, new 
+            { 
+                message = "Terjadi kesalahan saat mengimport file", 
+                error = ex.Message,
+                sessionId = sessionId
+            });
+        }
         }
 
         /// <summary>

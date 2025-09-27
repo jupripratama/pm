@@ -11,8 +11,17 @@ using Pm.Helper;
 using Pm.Middleware;
 using Pm.DTOs;
 using Pm.Validators;
+using OfficeOpenXml;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// set EPPlus license sekali saat startup (pilih salah satu)
+ExcelPackage.License.SetNonCommercialOrganization("MKN");
+// or ExcelPackage.License.SetNonCommercialPersonal("Your Name");
+// or ExcelPackage.License.SetCommercial("YOUR-COMMERCIAL-LICENSE-KEY");
+
+
+
 
 // Add services to the container.
 builder.Services.AddControllers(options =>
@@ -136,6 +145,8 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddCustomAuthorizationPolicies();
 });
+
+
 
 // Add Services
 builder.Services.AddScoped<IUserService, UserService>();

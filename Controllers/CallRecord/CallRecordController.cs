@@ -10,11 +10,13 @@ namespace Pm.Controllers
     public class CallRecordController : ControllerBase
     {
         private readonly ICallRecordService _callRecordService;
+        private readonly IExcelExportService _excelExportService;
         private readonly ILogger<CallRecordController> _logger;
 
-        public CallRecordController(ICallRecordService callRecordService, ILogger<CallRecordController> logger)
+        public CallRecordController(ICallRecordService callRecordService,IExcelExportService excelExportService, ILogger<CallRecordController> logger)
         {
             _callRecordService = callRecordService;
+            _excelExportService = excelExportService;
             _logger = logger;
         }
 
@@ -255,6 +257,65 @@ namespace Pm.Controllers
             {
                 _logger.LogError(ex, "Error regenerating summaries");
                 return StatusCode(500, new { message = "Terjadi kesalahan saat regenerate summary", error = ex.Message });
+            }
+        }
+        
+        [HttpGet("export/daily-summary/{date}")]
+        public async Task<IActionResult> ExportDailySummaryToExcel([FromRoute] string date)
+        {
+            if (!DateTime.TryParse(date, out var parsedDate))
+            {
+                return BadRequest(new { message = "Format tanggal tidak valid. Gunakan format YYYY-MM-DD" });
+            }
+
+            try
+            {
+                var summary = await _callRecordService.GetDailySummaryAsync(parsedDate);
+                var excelBytes = await _excelExportService.ExportDailySummaryToExcelAsync(parsedDate, summary);
+
+                var fileName = $"Daily_Summary_{parsedDate:yyyy-MM-dd}.xlsx";
+                
+                return File(excelBytes, 
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                    fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting daily summary to Excel");
+                return StatusCode(500, new { message = "Terjadi kesalahan saat export Excel", error = ex.Message });
+            }
+        }
+
+        [HttpGet("export/overall-summary")]
+        public async Task<IActionResult> ExportOverallSummaryToExcel(
+            [FromQuery] string startDate, 
+            [FromQuery] string endDate)
+        {
+            if (!DateTime.TryParse(startDate, out var parsedStartDate))
+            {
+                return BadRequest(new { message = "Format startDate tidak valid" });
+            }
+
+            if (!DateTime.TryParse(endDate, out var parsedEndDate))
+            {
+                return BadRequest(new { message = "Format endDate tidak valid" });
+            }
+
+            try
+            {
+                var summary = await _callRecordService.GetOverallSummaryAsync(parsedStartDate, parsedEndDate);
+                var excelBytes = await _excelExportService.ExportOverallSummaryToExcelAsync(parsedStartDate, parsedEndDate, summary);
+
+                var fileName = $"Overall_Summary_{parsedStartDate:yyyy-MM-dd}_to_{parsedEndDate:yyyy-MM-dd}.xlsx";
+                
+                return File(excelBytes, 
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                    fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting overall summary to Excel");
+                return StatusCode(500, new { message = "Terjadi kesalahan saat export Excel", error = ex.Message });
             }
         }
 

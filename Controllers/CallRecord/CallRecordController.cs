@@ -33,32 +33,32 @@ namespace Pm.Controllers
             public bool IsCompleted { get; set; }
         }
 
-        [HttpGet("import-progress/{sessionId}")]
-        public IActionResult GetImportProgress(string sessionId)
-        {
-            if (_importProgress.TryGetValue(sessionId, out var progress))
-            {
-                var elapsed = DateTime.UtcNow - progress.StartTime;
-                var estimatedTotal = progress.ProcessedRows > 0 
-                    ? elapsed.TotalSeconds * progress.TotalRows / progress.ProcessedRows 
-                    : 0;
+        // [HttpGet("import-progress/{sessionId}")]
+        // public IActionResult GetImportProgress(string sessionId)
+        // {
+        //     if (_importProgress.TryGetValue(sessionId, out var progress))
+        //     {
+        //         var elapsed = DateTime.UtcNow - progress.StartTime;
+        //         var estimatedTotal = progress.ProcessedRows > 0 
+        //             ? elapsed.TotalSeconds * progress.TotalRows / progress.ProcessedRows 
+        //             : 0;
 
-                return Ok(new
-                {
-                    fileName = progress.FileName,
-                    totalRows = progress.TotalRows,
-                    processedRows = progress.ProcessedRows,
-                    successfulRows = progress.SuccessfulRows,
-                    failedRows = progress.FailedRows,
-                    percentComplete = progress.TotalRows > 0 ? (double)progress.ProcessedRows / progress.TotalRows * 100 : 0,
-                    elapsedSeconds = elapsed.TotalSeconds,
-                    estimatedRemainingSeconds = estimatedTotal - elapsed.TotalSeconds,
-                    isCompleted = progress.IsCompleted
-                });
-            }
+        //         return Ok(new
+        //         {
+        //             fileName = progress.FileName,
+        //             totalRows = progress.TotalRows,
+        //             processedRows = progress.ProcessedRows,
+        //             successfulRows = progress.SuccessfulRows,
+        //             failedRows = progress.FailedRows,
+        //             percentComplete = progress.TotalRows > 0 ? (double)progress.ProcessedRows / progress.TotalRows * 100 : 0,
+        //             elapsedSeconds = elapsed.TotalSeconds,
+        //             estimatedRemainingSeconds = estimatedTotal - elapsed.TotalSeconds,
+        //             isCompleted = progress.IsCompleted
+        //         });
+        //     }
 
-            return NotFound(new { message = "Import session not found" });
-        }
+        //     return NotFound(new { message = "Import session not found" });
+        // }
 
         /// <summary>
         /// Upload dan import file CSV call records
@@ -145,24 +145,24 @@ namespace Pm.Controllers
             });
         }
 
-        /// <summary>
-        /// Get hourly summary untuk tanggal tertentu
-        /// </summary>
-        [HttpGet("summary/hourly/{date}")]
-        public async Task<IActionResult> GetHourlySummary([FromRoute] string date)
-        {
-            if (!DateTime.TryParse(date, out var parsedDate))
-            {
-                return BadRequest(new { message = "Format tanggal tidak valid. Gunakan format YYYY-MM-DD" });
-            }
+        // /// <summary>
+        // /// Get hourly summary untuk tanggal tertentu
+        // /// </summary>
+        // [HttpGet("summary/hourly/{date}")]
+        // public async Task<IActionResult> GetHourlySummary([FromRoute] string date)
+        // {
+        //     if (!DateTime.TryParse(date, out var parsedDate))
+        //     {
+        //         return BadRequest(new { message = "Format tanggal tidak valid. Gunakan format YYYY-MM-DD" });
+        //     }
 
-            var result = await _callRecordService.GetHourlySummaryAsync(parsedDate);
-            return Ok(new
-            {
-                message = $"Summary per jam untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dimuat",
-                data = result
-            });
-        }
+        //     var result = await _callRecordService.GetHourlySummaryAsync(parsedDate);
+        //     return Ok(new
+        //     {
+        //         message = $"Summary per jam untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dimuat",
+        //         data = result
+        //     });
+        // }
 
         /// <summary>
         /// Get daily summary untuk tanggal tertentu

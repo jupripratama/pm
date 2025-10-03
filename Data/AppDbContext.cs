@@ -19,12 +19,20 @@ namespace Pm.Data
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            if (!optionsBuilder.IsConfigured)
-            {
-                // Add performance optimizations for large data
-                optionsBuilder.EnableSensitiveDataLogging(false)
-                            .EnableDetailedErrors(false);
-            }
+            // if (!optionsBuilder.IsConfigured)
+            // {
+            //     // Add performance optimizations for large data
+            //     optionsBuilder.EnableSensitiveDataLogging(false)
+            //                 .EnableDetailedErrors(false);
+            // }
+
+            base.OnConfiguring(optionsBuilder);
+    
+            // Optimizations untuk bulk operations
+            optionsBuilder
+                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking) // Default no tracking
+                .EnableSensitiveDataLogging(false) // Disable untuk performa
+                .EnableDetailedErrors(false); // Disable untuk performa
         }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

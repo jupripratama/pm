@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using EFCore.BulkExtensions;
 using System.Text.RegularExpressions;
 using Pm.Data;
 using Pm.DTOs.CallRecord;
 using Pm.DTOs.Common;
 using Pm.Models;
 using System.Globalization;
+using System.Text;
 
 namespace Pm.Services
 {
@@ -23,49 +25,45 @@ namespace Pm.Services
         {
             var response = new UploadCsvResponseDto();
             var errors = new List<string>();
-            var callRecords = new List<CallRecord>();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        try
-        {
-            using var reader = new StreamReader(csvStream, encoding: System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            
-            _logger.LogInformation("Processing large CSV file {FileName}", fileName);
-            
-            var lineNumber = 0;
-            var batchSize = 1000; // Process in batches
-            var currentBatch = new List<CallRecord>();
-
-            string? line;
-            while ((line = await reader.ReadLineAsync()) != null)
+            try
             {
-                lineNumber++;
-
-                // Split merged rows if needed
-                var rows = SplitMergedLine(line);
+                using var reader = new StreamReader(csvStream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 65536);
                 
-                foreach (var row in rows)
+                _logger.LogInformation("Starting optimized CSV import for {FileName}", fileName);
+                
+                var lineNumber = 0;
+                var batchSize = 5000;
+                var currentBatch = new List<CallRecord>(batchSize);
+                var affectedDates = new HashSet<DateTime>();
+
+                string? line;
+                while ((line = await reader.ReadLineAsync()) != null)
                 {
+                    lineNumber++;
+
                     try
                     {
-                        var callRecord = ParseCsvRow(row, lineNumber);
+                        var callRecord = ParseCsvRowFast(line, lineNumber);
                         if (callRecord != null)
                         {
                             currentBatch.Add(callRecord);
+                            affectedDates.Add(callRecord.CallDate.Date);
                             response.SuccessfulRecords++;
 
-                            // Save in batches to avoid memory issues
                             if (currentBatch.Count >= batchSize)
                             {
-                                await SaveBatchAsync(currentBatch);
+                                await BulkInsertAsync(currentBatch);
                                 currentBatch.Clear();
                             }
                         }
                         else
                         {
                             response.FailedRecords++;
-                            if (errors.Count < 100) // Limit error collection
+                            if (errors.Count < 100)
                             {
-                                errors.Add($"Row {lineNumber}: Invalid data format");
+                                errors.Add($"Row {lineNumber}: Invalid format");
                             }
                         }
                     }
@@ -76,61 +74,226 @@ namespace Pm.Services
                         {
                             errors.Add($"Row {lineNumber}: {ex.Message}");
                         }
-
-                        // Log first few errors in detail
-                        if (errors.Count <= 5)
-                        {
-                            _logger.LogWarning("Row {LineNumber} error: {Error}. Data: {Data}", 
-                                lineNumber, ex.Message, row.Length > 100 ? row[..100] + "..." : row);
-                        }
-                    }
                     }
 
-                    response.TotalRecords = lineNumber;
-
-                    // Log progress every 10,000 rows
+                    // Log progress setiap 10k baris
                     if (lineNumber % 10000 == 0)
                     {
-                        _logger.LogInformation("Processed {Processed} rows, Success: {Success}, Failed: {Failed}", 
-                            lineNumber, response.SuccessfulRecords, response.FailedRecords);
+                        _logger.LogInformation("Processed {Rows} rows...", lineNumber);
                     }
-            }
-
-                // Save remaining batch
-                if (currentBatch.Any())
-                {
-                    await SaveBatchAsync(currentBatch);
                 }
 
-                    // Generate summaries for affected dates
-                    if (response.SuccessfulRecords > 0)
+                // Insert remaining batch
+                if (currentBatch.Any())
+                {
+                    await BulkInsertAsync(currentBatch);
+                }
+
+                response.TotalRecords = lineNumber;
+
+                stopwatch.Stop();
+                _logger.LogInformation("CSV import completed in {ElapsedMs}ms. Success: {Success}, Failed: {Failed}", 
+                    stopwatch.ElapsedMilliseconds, response.SuccessfulRecords, response.FailedRecords);
+
+                // Generate summaries di background
+                _ = Task.Run(async () =>
+                {
+                    try
                     {
-                        var affectedDates = await _context.CallRecords
-                            .Where(cr => cr.CreatedAt >= DateTime.UtcNow.AddMinutes(-10)) // Records from this session
-                            .Select(cr => cr.CallDate.Date)
-                            .Distinct()
-                            .ToListAsync();
-
-                        _logger.LogInformation("Regenerating summaries for {DateCount} dates", affectedDates.Count);
-
                         foreach (var date in affectedDates)
                         {
                             await GenerateDailySummaryAsync(date);
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error generating summaries");
+                    }
+                });
 
-                    response.Errors = errors;
-                    _logger.LogInformation("CSV import completed. Total: {Total}, Success: {Success}, Failed: {Failed}", 
-                        response.TotalRecords, response.SuccessfulRecords, response.FailedRecords);
+                response.Errors = errors;
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing CSV file {FileName}", fileName);
+                response.Errors.Add($"General error: {ex.Message}");
+                return response;
+            }
+        }
 
-                    return response;
-                }
-                catch (Exception ex)
+        // METHOD 2: Parallel processing (untuk file < 50MB)
+        public async Task<UploadCsvResponseDto> ImportCsvFastParallelAsync(Stream csvStream, string fileName)
+        {
+            var response = new UploadCsvResponseDto();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            try
+            {
+                using var reader = new StreamReader(csvStream, System.Text.Encoding.UTF8);
+                var allContent = await reader.ReadToEndAsync();
+                var lines = allContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                _logger.LogInformation("Processing {Count} lines with parallel processing", lines.Length);
+
+                // Parallel processing
+                var records = lines
+                    .AsParallel()
+                    .WithDegreeOfParallelism(Environment.ProcessorCount)
+                    .Select((line, index) => ParseCsvRowFast(line, index + 1))
+                    .Where(r => r != null)
+                    .Select(r => r!) // FIX: Non-null assertion
+                    .ToList();
+
+                response.TotalRecords = lines.Length;
+                response.SuccessfulRecords = records.Count;
+                response.FailedRecords = lines.Length - records.Count;
+
+                // Bulk insert in batches
+                var batchSize = 5000;
+                for (int i = 0; i < records.Count; i += batchSize)
                 {
-                    _logger.LogError(ex, "Error importing large CSV file {FileName}", fileName);
-                    response.Errors.Add($"General error: {ex.Message}");
-                    return response;
+                    var batch = records.Skip(i).Take(batchSize).ToList();
+                    await BulkInsertAsync(batch);
                 }
+
+                stopwatch.Stop();
+                _logger.LogInformation("Parallel import completed in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+
+                // Generate summaries di background
+                var affectedDates = records.Select(r => r.CallDate.Date).Distinct().ToList();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        foreach (var date in affectedDates)
+                        {
+                            await GenerateDailySummaryAsync(date);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error generating summaries");
+                    }
+                });
+
+                response.Errors = new List<string>();
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in parallel CSV import");
+                response.Errors.Add($"Error: {ex.Message}");
+                return response;
+            }
+        }
+
+        // Fast parsing dengan Span untuk performa
+        private CallRecord? ParseCsvRowFast(string line, int rowNumber)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(line)) return null;
+
+                var fields = line.Split(',');
+                if (fields.Length < 3) return null;
+
+                // Fast date parsing
+                var dateStr = fields[0].Trim().Trim('"').Trim();
+                if (dateStr.Length != 8) return null;
+                
+                if (!int.TryParse(dateStr.AsSpan(0, 4), out var year)) return null;
+                if (!int.TryParse(dateStr.AsSpan(4, 2), out var month)) return null;
+                if (!int.TryParse(dateStr.AsSpan(6, 2), out var day)) return null;
+                
+                DateTime callDate;
+                try
+                {
+                    callDate = new DateTime(year, month, day);
+                }
+                catch
+                {
+                    return null;
+                }
+
+                // Fast time parsing
+                var timeStr = fields[1].Trim().Trim('"');
+                if (!TimeSpan.TryParse(timeStr, out var callTime)) return null;
+
+                // Fast close reason parsing
+                int callCloseReason = -1;
+                if (fields.Length >= 2)
+                {
+                    var secondLast = fields[fields.Length - 2].Trim().Trim('"');
+                    if (int.TryParse(secondLast, out var val))
+                    {
+                        callCloseReason = val;
+                    }
+                }
+                
+                if (callCloseReason == -1 && fields.Length >= 1)
+                {
+                    var last = fields[fields.Length - 1].Trim().Trim('"');
+                    if (!int.TryParse(last, out callCloseReason))
+                    {
+                        return null;
+                    }
+                }
+
+                return new CallRecord
+                {
+                    CallDate = callDate,
+                    CallTime = callTime,
+                    CallCloseReason = callCloseReason,
+                    CreatedAt = DateTime.UtcNow
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+
+       // Bulk insert menggunakan EFCore.BulkExtensions
+        private async Task BulkInsertAsync(List<CallRecord> records)
+        {
+            if (!records.Any()) return;
+    
+            try
+            {
+                // Split menjadi chunks lebih kecil (500 records per chunk)
+                var chunkSize = 500;
+                var totalChunks = (int)Math.Ceiling(records.Count / (double)chunkSize);
+                
+                _logger.LogDebug("Inserting {TotalRecords} records in {TotalChunks} chunks", records.Count, totalChunks);
+                
+                for (int i = 0; i < records.Count; i += chunkSize)
+                {
+                    var chunk = records.Skip(i).Take(chunkSize).ToList();
+                    
+                    _context.ChangeTracker.AutoDetectChangesEnabled = false;
+                    try
+                    {
+                        await _context.CallRecords.AddRangeAsync(chunk);
+                        await _context.SaveChangesAsync();
+                        _context.ChangeTracker.Clear(); // Clear tracking untuk memory efficiency
+                    }
+                    finally
+                    {
+                        _context.ChangeTracker.AutoDetectChangesEnabled = true;
+                    }
+                    
+                    _logger.LogDebug("Inserted chunk {Current}/{Total}", (i / chunkSize) + 1, totalChunks);
+                }
+                
+                _logger.LogInformation("Successfully inserted all {Count} records", records.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during chunked bulk insert");
+                throw;
+            }
         }
         
         private async Task SaveBatchAsync(List<CallRecord> batch)
@@ -139,7 +302,7 @@ namespace Pm.Services
 
             await _context.CallRecords.AddRangeAsync(batch);
             await _context.SaveChangesAsync();
-            
+
             _logger.LogDebug("Saved batch of {Count} records", batch.Count);
         }
 
@@ -170,37 +333,37 @@ namespace Pm.Services
             return rows;
         }
 
-        // private List<string> SplitCsvContent(string csvContent)
-        // {
-        //     var rows = new List<string>();
-        //     var lines = csvContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        private List<string> SplitCsvContent(string csvContent)
+        {
+            var rows = new List<string>();
+            var lines = csvContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
-        //     foreach (var line in lines)
-        //     {
-        //         var dateMatches = Regex.Matches(line, @"\b20\d{6}\b");
+            foreach (var line in lines)
+            {
+                var dateMatches = Regex.Matches(line, @"\b20\d{6}\b");
 
-        //         if (dateMatches.Count > 1)
-        //         {
-        //             var parts = Regex.Split(line, @"(?=\b20\d{6}\b)");
-        //             foreach (var part in parts)
-        //             {
-        //                 if (!string.IsNullOrWhiteSpace(part.Trim()))
-        //                 {
-        //                     rows.Add(part.Trim());
-        //                 }
-        //             }
-        //         }
-        //         else
-        //         {
-        //             if (!string.IsNullOrWhiteSpace(line.Trim()))
-        //             {
-        //                 rows.Add(line.Trim());
-        //             }
-        //         }
-        //     }
+                if (dateMatches.Count > 1)
+                {
+                    var parts = Regex.Split(line, @"(?=\b20\d{6}\b)");
+                    foreach (var part in parts)
+                    {
+                        if (!string.IsNullOrWhiteSpace(part.Trim()))
+                        {
+                            rows.Add(part.Trim());
+                        }
+                    }
+                }
+                else
+                {
+                    if (!string.IsNullOrWhiteSpace(line.Trim()))
+                    {
+                        rows.Add(line.Trim());
+                    }
+                }
+            }
 
-        //     return rows;
-        // }
+            return rows;
+        }
 
         private CallRecord? ParseCsvRow(string csvRow, int rowNumber)
         {
@@ -283,9 +446,11 @@ namespace Pm.Services
                     throw new ArgumentException($"Invalid call close reason: '{reasonField}' from field count {fields.Length}");
                 }
 
+                var callDateTime = callDate.Date.Add(callTime);
+
                 return new CallRecord
                 {
-                    CallDate = callDate,
+                    CallDate = callDateTime,
                     CallTime = callTime,
                     CallCloseReason = callCloseReason,
                     CreatedAt = DateTime.UtcNow
@@ -310,6 +475,46 @@ namespace Pm.Services
                             .Replace("\r", "")
                             .Replace("\n", "");
             }
+
+        public async Task<byte[]> ExportCallRecordsToCsvAsync(DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                _logger.LogInformation("Exporting call records from {StartDate} to {EndDate}", startDate, endDate);
+
+                // Get all records in date range
+                var records = await _context.CallRecords
+                    .Where(cr => cr.CallDate >= startDate.Date && cr.CallDate <= endDate.Date)
+                    .OrderBy(cr => cr.CallDate)
+                    .ThenBy(cr => cr.CallTime)
+                    .ToListAsync();
+
+                // Build CSV content
+                var csv = new StringBuilder();
+                
+                // Header
+                csv.AppendLine("DATE;TIME;CALL CLOSE REASON");
+
+                // Data rows
+                foreach (var record in records)
+                {
+                    var date = record.CallDate.ToString("yyyyMMdd");
+                    var time = record.CallTime.ToString(@"hh\:mm\:ss");
+                    var closeReason = record.CallCloseReason;
+
+                    csv.AppendLine($"{date};{time};{closeReason}");
+                }
+
+                _logger.LogInformation("Exported {Count} call records to CSV", records.Count);
+
+                return Encoding.UTF8.GetBytes(csv.ToString());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting call records to CSV");
+                throw;
+            }
+        }
 
         public async Task<PagedResultDto<CallRecordDto>> GetCallRecordsAsync(CallRecordQueryDto query)
         {

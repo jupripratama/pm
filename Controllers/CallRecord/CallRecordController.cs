@@ -66,69 +66,52 @@ namespace Pm.Controllers
         [HttpPost("import-csv")]
         public async Task<IActionResult> ImportCsv(IFormFile file)
         {
-            if (file == null || file.Length == 0)
-        {
-            return BadRequest(new { message = "File tidak boleh kosong" });
-        }
-
-        // Increase file size limit untuk large files (100MB)
-        if (file.Length > 100 * 1024 * 1024)
-        {
-            return BadRequest(new { message = "Ukuran file maksimal 100MB" });
-        }
-
-        var sessionId = Guid.NewGuid().ToString();
-        
-        try
-        {
-            // Initialize progress tracking
-            _importProgress[sessionId] = new ImportProgress
+           if (file == null || file.Length == 0)
             {
-                FileName = file.FileName,
-                StartTime = DateTime.UtcNow
-            };
-
-            using var stream = file.OpenReadStream();
-            var result = await _callRecordService.ImportCsvAsync(stream, file.FileName);
-
-            // Mark as completed
-            if (_importProgress.ContainsKey(sessionId))
-            {
-                _importProgress[sessionId].IsCompleted = true;
+                return BadRequest(new { message = "File tidak boleh kosong" });
             }
 
-            var message = result.SuccessfulRecords > 0 
-                ? $"Import berhasil. {result.SuccessfulRecords:N0} record berhasil diproses" 
-                : "Import gagal";
-
-            if (result.FailedRecords > 0)
+            if (file.Length > 100 * 1024 * 1024) // 100MB max
             {
-                message += $", {result.FailedRecords:N0} record gagal diproses";
+                return BadRequest(new { message = "Ukuran file maksimal 100MB" });
             }
 
-            return Ok(new
+            try
             {
-                message = message,
-                data = result,
-                sessionId = sessionId
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error importing large CSV file {FileName}", file.FileName);
-            
-            if (_importProgress.ContainsKey(sessionId))
-            {
-                _importProgress[sessionId].IsCompleted = true;
+                using var stream = file.OpenReadStream();
+                
+                UploadCsvResponseDto result;
+                
+                // Pilih method berdasarkan ukuran file
+                if (file.Length < 50 * 1024 * 1024) // < 50MB
+                {
+                    _logger.LogInformation("Using parallel processing for file {FileName} ({Size}MB)", 
+                        file.FileName, file.Length / 1024.0 / 1024.0);
+                    result = await _callRecordService.ImportCsvFastParallelAsync(stream, file.FileName);
+                }
+                else // >= 50MB
+                {
+                    _logger.LogInformation("Using streaming processing for large file {FileName} ({Size}MB)", 
+                        file.FileName, file.Length / 1024.0 / 1024.0);
+                    result = await _callRecordService.ImportCsvAsync(stream, file.FileName);
+                }
+
+                var message = result.SuccessfulRecords > 0 
+                    ? $"Import berhasil. {result.SuccessfulRecords:N0} record berhasil diproses" 
+                    : "Import gagal";
+
+                if (result.FailedRecords > 0)
+                {
+                    message += $", {result.FailedRecords:N0} record gagal diproses";
+                }
+
+                return Ok(new { message, data = result });
             }
-            
-            return StatusCode(500, new 
-            { 
-                message = "Terjadi kesalahan saat mengimport file", 
-                error = ex.Message,
-                sessionId = sessionId
-            });
-        }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing CSV file {FileName}", file.FileName);
+                return StatusCode(500, new { message = "Terjadi kesalahan saat mengimport file", error = ex.Message });
+            }
         }
 
         /// <summary>
@@ -316,6 +299,81 @@ namespace Pm.Controllers
             {
                 _logger.LogError(ex, "Error exporting overall summary to Excel");
                 return StatusCode(500, new { message = "Terjadi kesalahan saat export Excel", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Download call records sebagai CSV file
+        /// </summary>
+        /// <param name="startDate">Tanggal mulai (YYYY-MM-DD)</param>
+        /// <param name="endDate">Tanggal akhir (YYYY-MM-DD)</param>
+        /// <returns>CSV file download</returns>
+        [HttpGet("export/csv")]
+        public async Task<IActionResult> ExportCallRecordsToCsv(
+            [FromQuery] string startDate, 
+            [FromQuery] string endDate)
+        {
+            if (!DateTime.TryParse(startDate, out var parsedStartDate))
+            {
+                return BadRequest(new { message = "Format startDate tidak valid. Gunakan format YYYY-MM-DD" });
+            }
+
+            if (!DateTime.TryParse(endDate, out var parsedEndDate))
+            {
+                return BadRequest(new { message = "Format endDate tidak valid. Gunakan format YYYY-MM-DD" });
+            }
+
+            if (parsedStartDate > parsedEndDate)
+            {
+                return BadRequest(new { message = "StartDate tidak boleh lebih besar dari endDate" });
+            }
+
+            // Limit maksimal 90 hari
+            if ((parsedEndDate - parsedStartDate).Days > 90)
+            {
+                return BadRequest(new { message = "Rentang tanggal maksimal 90 hari" });
+            }
+
+            try
+            {
+                var csvBytes = await _callRecordService.ExportCallRecordsToCsvAsync(parsedStartDate, parsedEndDate);
+
+                var fileName = $"CallRecords_{parsedStartDate:yyyyMMdd}_to_{parsedEndDate:yyyyMMdd}.csv";
+                
+                return File(csvBytes, "text/csv", fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting call records to CSV");
+                return StatusCode(500, new { message = "Terjadi kesalahan saat export CSV", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Download call records untuk tanggal tertentu sebagai CSV
+        /// </summary>
+        /// <param name="date">Tanggal (YYYY-MM-DD)</param>
+        /// <returns>CSV file download</returns>
+        [HttpGet("export/csv/{date}")]
+        public async Task<IActionResult> ExportDailyCallRecordsToCsv([FromRoute] string date)
+        {
+            if (!DateTime.TryParse(date, out var parsedDate))
+            {
+                return BadRequest(new { message = "Format tanggal tidak valid. Gunakan format YYYY-MM-DD" });
+            }
+
+            try
+            {
+                var csvBytes = await _callRecordService.ExportCallRecordsToCsvAsync(parsedDate, parsedDate);
+
+                var fileName = $"CallRecords_{parsedDate:yyyyMMdd}.csv";
+                
+                return File(csvBytes, "text/csv", fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting daily call records to CSV");
+                return StatusCode(500, new { message = "Terjadi kesalahan saat export CSV", error = ex.Message });
             }
         }
 

@@ -7,11 +7,13 @@ namespace Pm.Models
     {
         [Key]
         public int CallRecordId { get; set; }
-        
+
         [Required]
+        [Column(TypeName = "date")]
         public DateTime CallDate { get; set; }
-        
+
         [Required]
+        [Column(TypeName = "time(0)")]
         public TimeSpan CallTime { get; set; }
         
         [Required]

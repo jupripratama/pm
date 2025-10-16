@@ -66,7 +66,7 @@ namespace Pm.Controllers
         [HttpPost("import-csv")]
         public async Task<IActionResult> ImportCsv(IFormFile file)
         {
-           if (file == null || file.Length == 0)
+            if (file == null || file.Length == 0)
             {
                 return BadRequest(new { message = "File tidak boleh kosong" });
             }
@@ -76,41 +76,53 @@ namespace Pm.Controllers
                 return BadRequest(new { message = "Ukuran file maksimal 100MB" });
             }
 
+            // Validasi ekstensi file
+            var allowedExtensions = new[] { ".csv", ".txt" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowedExtensions.Contains(fileExtension))
+            {
+                return BadRequest(new { message = "Hanya file CSV dan TXT yang diizinkan" });
+            }
+
+            var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
             try
             {
+                _logger.LogInformation("Starting CSV import for file: {FileName} ({Size} bytes)", 
+                    file.FileName, file.Length);
+
                 using var stream = file.OpenReadStream();
-                
-                UploadCsvResponseDto result;
-                
-                // Pilih method berdasarkan ukuran file
-                if (file.Length < 50 * 1024 * 1024) // < 50MB
-                {
-                    _logger.LogInformation("Using parallel processing for file {FileName} ({Size}MB)", 
-                        file.FileName, file.Length / 1024.0 / 1024.0);
-                    result = await _callRecordService.ImportCsvFastParallelAsync(stream, file.FileName);
-                }
-                else // >= 50MB
-                {
-                    _logger.LogInformation("Using streaming processing for large file {FileName} ({Size}MB)", 
-                        file.FileName, file.Length / 1024.0 / 1024.0);
-                    result = await _callRecordService.ImportCsvAsync(stream, file.FileName);
-                }
+                var result = await _callRecordService.ImportCsvAsync(stream, file.FileName);
+
+                totalStopwatch.Stop();
 
                 var message = result.SuccessfulRecords > 0 
-                    ? $"Import berhasil. {result.SuccessfulRecords:N0} record berhasil diproses" 
-                    : "Import gagal";
+                    ? $"Import berhasil. {result.SuccessfulRecords:N0} record berhasil diproses dalam {totalStopwatch.ElapsedMilliseconds}ms" 
+                    : "Import gagal - tidak ada record yang berhasil diproses";
 
                 if (result.FailedRecords > 0)
                 {
-                    message += $", {result.FailedRecords:N0} record gagal diproses";
+                    message += $", {result.FailedRecords:N0} record gagal";
                 }
 
-                return Ok(new { message, data = result });
+                if (result.Errors.Any())
+                {
+                    message += $". Errors: {string.Join("; ", result.Errors)}";
+                }
+
+                return Ok(new { 
+                    message, 
+                    data = result, 
+                    totalTimeMs = totalStopwatch.ElapsedMilliseconds 
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error importing CSV file {FileName}", file.FileName);
-                return StatusCode(500, new { message = "Terjadi kesalahan saat mengimport file", error = ex.Message });
+                return StatusCode(500, new { 
+                    message = "Terjadi kesalahan saat mengimport file", 
+                    error = ex.Message 
+                });
             }
         }
 
@@ -128,24 +140,8 @@ namespace Pm.Controllers
             });
         }
 
-        // /// <summary>
-        // /// Get hourly summary untuk tanggal tertentu
-        // /// </summary>
-        // [HttpGet("summary/hourly/{date}")]
-        // public async Task<IActionResult> GetHourlySummary([FromRoute] string date)
-        // {
-        //     if (!DateTime.TryParse(date, out var parsedDate))
-        //     {
-        //         return BadRequest(new { message = "Format tanggal tidak valid. Gunakan format YYYY-MM-DD" });
-        //     }
+        
 
-        //     var result = await _callRecordService.GetHourlySummaryAsync(parsedDate);
-        //     return Ok(new
-        //     {
-        //         message = $"Summary per jam untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dimuat",
-        //         data = result
-        //     });
-        // }
 
         /// <summary>
         /// Get daily summary untuk tanggal tertentu
@@ -202,46 +198,6 @@ namespace Pm.Controllers
             });
         }
 
-        /// <summary>
-        /// Regenerate summaries untuk rentang tanggal tertentu
-        /// </summary>
-        [HttpPost("summary/regenerate")]
-        public async Task<IActionResult> RegenerateSummaries(
-            [FromQuery] string startDate, 
-            [FromQuery] string endDate)
-        {
-            if (!DateTime.TryParse(startDate, out var parsedStartDate))
-            {
-                return BadRequest(new { message = "Format startDate tidak valid. Gunakan format YYYY-MM-DD" });
-            }
-
-            if (!DateTime.TryParse(endDate, out var parsedEndDate))
-            {
-                return BadRequest(new { message = "Format endDate tidak valid. Gunakan format YYYY-MM-DD" });
-            }
-
-            try
-            {
-                var success = await _callRecordService.RegenerateSummariesAsync(parsedStartDate, parsedEndDate);
-                
-                if (success)
-                {
-                    return Ok(new
-                    {
-                        message = $"Summary berhasil di-regenerate dari {parsedStartDate:yyyy-MM-dd} sampai {parsedEndDate:yyyy-MM-dd}"
-                    });
-                }
-                else
-                {
-                    return StatusCode(500, new { message = "Gagal melakukan regenerate summary" });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error regenerating summaries");
-                return StatusCode(500, new { message = "Terjadi kesalahan saat regenerate summary", error = ex.Message });
-            }
-        }
         
         [HttpGet("export/daily-summary/{date}")]
         public async Task<IActionResult> ExportDailySummaryToExcel([FromRoute] string date)

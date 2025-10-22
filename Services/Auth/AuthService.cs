@@ -69,7 +69,8 @@ namespace Pm.Services
                     RoleId = user.RoleId,
                     RoleName = user.Role?.RoleName,
                     LastLogin = user.LastLogin,
-                    CreatedAt = user.CreatedAt
+                    CreatedAt = user.CreatedAt,
+                    Permissions = permissions
                 },
                 Permissions = permissions
             };

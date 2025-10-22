@@ -12,5 +12,6 @@ namespace Pm.DTOs
         public string? LastLoginText { get; set; }
         public DateTime? LastLogin { get; set; }
         public DateTime CreatedAt { get; set; }
+        public List<string> Permissions { get; set; } = new();
     }
 }

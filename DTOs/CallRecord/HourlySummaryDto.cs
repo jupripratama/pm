@@ -4,7 +4,7 @@ namespace Pm.DTOs.CallRecord
     {
         public DateTime Date { get; set; }
         public int HourGroup { get; set; }
-        public string TimeRange { get; set; } = string.Empty;
+        public string TimeRange { get; set; } = "";
         public int Qty { get; set; }
         public int TEBusy { get; set; }
         public decimal TEBusyPercent { get; set; }
@@ -12,5 +12,10 @@ namespace Pm.DTOs.CallRecord
         public decimal SysBusyPercent { get; set; }
         public int Others { get; set; }
         public decimal OthersPercent { get; set; }
+        
+        // ✅ TAMBAHAN (optional)
+        public string TEBusyDescription { get; set; } = "TE Busy";
+        public string SysBusyDescription { get; set; } = "System Busy";
+        public string OthersDescription { get; set; } = "Others";
     }
 }

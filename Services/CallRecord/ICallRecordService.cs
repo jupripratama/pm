@@ -13,5 +13,8 @@ namespace Pm.Services
         Task<List<HourlySummaryDto>> GetHourlySummaryAsync(DateTime date);
         Task<bool> RegenerateSummariesAsync(DateTime startDate, DateTime endDate);
         Task<bool> DeleteCallRecordsAsync(DateTime date);
+        Task<bool> IsFileAlreadyImported(string fileName);
+
+        Task ResetAllDataAsync();
     }
 }

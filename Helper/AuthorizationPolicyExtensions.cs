@@ -44,6 +44,23 @@ namespace Pm.Helper
 
             options.AddPolicy("CanDeleteUsers", policy =>
                 policy.RequireClaim("Permission", "user.delete"));
+
+            // Call Record policies
+            options.AddPolicy("CanImportCallRecords", policy =>
+                policy.RequireClaim("Permission", "callrecord.import"));
+            options.AddPolicy("CanViewCallRecords", policy =>
+                policy.RequireClaim("Permission", "callrecord.view-any"));
+            options.AddPolicy("CanViewDetailCallRecords", policy =>
+                policy.RequireClaim("Permission", "callrecord.view"));
+            options.AddPolicy("CanExportCallRecordsExcel", policy =>
+                policy.RequireClaim("Permission", "callrecord.export-excel"));
+            options.AddPolicy("CanExportCallRecordsCsv", policy =>
+                policy.RequireClaim("Permission", "callrecord.export-csv"));
+            options.AddPolicy("CanDeleteCallRecords", policy =>
+                policy.RequireClaim("Permission", "callrecord.delete"));
+            options.AddPolicy("CanDeleteAllData", policy =>
+                policy.RequireClaim("Permission", "delete.all-data"));
+            
         }
     }
 }

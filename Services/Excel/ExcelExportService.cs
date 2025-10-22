@@ -276,6 +276,36 @@ namespace Pm.Services
                 range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
             }
         }
+
+        public Task<byte[]> ExportMultipleDailySummariesToExcelAsync(
+        DateTime startDate, 
+        DateTime endDate, 
+        OverallSummaryDto overallSummary)
+        {
+            using var package = new ExcelPackage();
+
+            // Loop setiap tanggal dan buat sheet untuk masing-masing
+            foreach (var dailyData in overallSummary.DailyData.Where(d => d.TotalQty > 0))
+            {
+                var sheetName = dailyData.Date.ToString("yyyy-MM-dd");
+                var worksheet = package.Workbook.Worksheets.Add(sheetName);
+
+                // Set up headers (sama seperti daily summary)
+                SetupDailySummaryHeaders(worksheet);
+
+                // Fill data untuk tanggal ini
+                FillDailySummaryData(worksheet, dailyData);
+
+                // Apply formatting
+                ApplyDailySummaryFormatting(worksheet, dailyData.HourlyData.Count);
+            }
+
+            // Tambahkan sheet summary keseluruhan di akhir (optional)
+            var summarySheet = package.Workbook.Worksheets.Add("Overall Summary");
+            FillOverallSummarySheet(summarySheet, startDate, endDate, overallSummary);
+
+            return Task.FromResult(package.GetAsByteArray());
+        }
     }
 }
 

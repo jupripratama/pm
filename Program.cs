@@ -179,13 +179,30 @@ builder.Services.AddLogging(config =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseSwagger(); // Always generate Swagger JSON
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1 - DEV");
+        c.RoutePrefix = "swagger"; 
+        c.DocumentTitle = "PM MKN API - Development";
+        c.EnablePersistAuthorization();
+        c.EnableDeepLinking();
+        c.DisplayOperationId();
+        c.DisplayRequestDuration();
+    });
+}
+else
+{
+    // Production - minimal configuration
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1");
-        c.RoutePrefix = string.Empty; // Makes Swagger UI available at app's root
+        c.RoutePrefix = string.Empty; // Root path - atau "api-docs" untuk lebih aman
+        c.DocumentTitle = "PM MKN API";
+        c.EnablePersistAuthorization();
     });
 }
 

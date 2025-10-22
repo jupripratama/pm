@@ -15,6 +15,7 @@ namespace Pm.Data
         public DbSet<RolePermission> RolePermissions { get; set; }
         public DbSet<CallRecord> CallRecords { get; set; }
         public DbSet<CallSummary> CallSummaries { get; set; }
+        public DbSet<FileImportHistory> FileImportHistories { get; set; }
 
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

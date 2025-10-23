@@ -16,5 +16,8 @@ namespace Pm.Services
         Task<bool> IsFileAlreadyImported(string fileName);
 
         Task ResetAllDataAsync();
+
+         Task<FleetStatisticsDto> GetFleetStatisticsAsync(DateTime date, int top = 10, FleetStatisticType? type = null);
+        Task BulkInsertFleetStatisticsAsync(List<Models.FleetStatistic> stats);
     }
 }

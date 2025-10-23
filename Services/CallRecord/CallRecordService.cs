@@ -27,7 +27,6 @@ namespace Pm.Services
 
             try
             {
-                // ✅ CEK APAKAH FILE SUDAH PERNAH DI IMPORT
                 if (await IsFileAlreadyImported(fileName))
                 {
                     response.Errors.Add($"File '{fileName}' sudah pernah diimport sebelumnya");
@@ -35,7 +34,6 @@ namespace Pm.Services
                     return response;
                 }
             
-                // BACA SEMUA ISI FILE
                 using var reader = new StreamReader(csvStream, Encoding.UTF8);
                 var allContent = await reader.ReadToEndAsync();
                 var lines = allContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -44,15 +42,44 @@ namespace Pm.Services
 
                 var parseStart = stopwatch.ElapsedMilliseconds;
                 
-                // Parallel parsing untuk performa maksimal
-                var records = lines
+                var fleetStatsDict = new Dictionary<string, FleetStatistic>();
+                
+                var parsedData = lines
                     .AsParallel()
                     .WithDegreeOfParallelism(Environment.ProcessorCount)
-                    .WithExecutionMode(ParallelExecutionMode.ForceParallelism)
-                    .Select((line, idx) => ParseCsvRowOptimized(line, idx + 1))
-                    .Where(r => r != null)
-                    .Cast<CallRecord>()
+                    .Select((line, idx) => ParseCsvRowWithFleetData(line, idx + 1))
+                    .Where(r => r.record != null)
                     .ToList();
+
+                var records = parsedData.Select(p => p.record!).ToList();
+
+                // Build fleet statistics
+                foreach (var (record, callerFleet, calledFleet, duration) in parsedData.Where(p => p.record != null))
+                {
+                    if (string.IsNullOrEmpty(callerFleet) || string.IsNullOrEmpty(calledFleet))
+                        continue;
+
+                    var key = $"{record!.CallDate:yyyyMMdd}_{callerFleet}_{calledFleet}";
+                    
+                    if (fleetStatsDict.ContainsKey(key))
+                    {
+                        fleetStatsDict[key].CallCount++;
+                        fleetStatsDict[key].TotalDuration += duration;
+                        fleetStatsDict[key].UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        fleetStatsDict[key] = new FleetStatistic
+                        {
+                            CallDate = record.CallDate.Date,
+                            CallerFleet = callerFleet,
+                            CalledFleet = calledFleet,
+                            CallCount = 1,
+                            TotalDuration = duration,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                    }
+                }
 
                 _logger.LogInformation("✅ Parsed {Successful}/{Total} records in {Ms}ms", 
                     records.Count, lines.Length, stopwatch.ElapsedMilliseconds - parseStart);
@@ -60,9 +87,12 @@ namespace Pm.Services
                 if (records.Any())
                 {
                     var insertStart = stopwatch.ElapsedMilliseconds;
+                    
                     await BulkInsertOptimizedAsync(records);
-                    _logger.LogInformation("💾 Inserted {Count} records in {Ms}ms", 
-                        records.Count, stopwatch.ElapsedMilliseconds - insertStart);
+                    await BulkInsertFleetStatisticsAsync(fleetStatsDict.Values.ToList());
+                    
+                    _logger.LogInformation("💾 Inserted {RecordCount} records and {FleetCount} fleet stats in {Ms}ms", 
+                        records.Count, fleetStatsDict.Count, stopwatch.ElapsedMilliseconds - insertStart);
                 }
 
                 response.SuccessfulRecords = records.Count;
@@ -70,10 +100,8 @@ namespace Pm.Services
                 response.FailedRecords = lines.Length - records.Count;
 
                 stopwatch.Stop();
-                _logger.LogInformation("🎉 Import completed in {Ms}ms - Success: {Success}, Failed: {Failed}",
-                    stopwatch.ElapsedMilliseconds, response.SuccessfulRecords, response.FailedRecords);
+                _logger.LogInformation("🎉 Import completed in {Ms}ms", stopwatch.ElapsedMilliseconds);
                     
-                    // ✅ SIMPAN HISTORY IMPORT JIKA SUKSES
                 if (records.Any())
                 {
                     var importHistory = new FileImportHistory
@@ -86,11 +114,8 @@ namespace Pm.Services
                     
                     await _context.FileImportHistories.AddAsync(importHistory);
                     await _context.SaveChangesAsync();
-                    
-                    _logger.LogInformation("📝 Import history saved for file: {FileName}", fileName);
                 }
 
-                // Generate summaries async (fire and forget)
                 _ = Task.Run(async () =>
                 {
                     try 
@@ -100,7 +125,6 @@ namespace Pm.Services
                         {
                             await GenerateDailySummaryAsync(date);
                         }
-                        _logger.LogInformation("📊 Summaries generated for {Count} dates", dates.Count());
                     }
                     catch (Exception ex) 
                     { 
@@ -112,7 +136,6 @@ namespace Pm.Services
             }
             catch (Exception ex)
             {
-                // ✅ SIMPAN HISTORY IMPORT JIKA GAGAL
                 var failedHistory = new FileImportHistory
                 {
                     FileName = fileName,
@@ -131,56 +154,68 @@ namespace Pm.Services
             }
         }
 
-        private CallRecord? ParseCsvRowOptimized(string line, int rowNumber)
+        private (CallRecord? record, string? callerFleet, string? calledFleet, int duration) ParseCsvRowWithFleetData(string line, int rowNumber)
         {
-            if (string.IsNullOrWhiteSpace(line)) 
-                return null;
-            
-            try
-            {
-                // Remove surrounding quotes jika ada
-                if (line.StartsWith('"') && line.EndsWith('"'))
-                    line = line.Substring(1, line.Length - 2);
+        if (string.IsNullOrWhiteSpace(line)) 
+            return (null, null, null, 0);
+        
+        try
+        {
+            if (line.StartsWith('"') && line.EndsWith('"'))
+                line = line.Substring(1, line.Length - 2);
 
-                var parts = line.Split(',');
-                if (parts.Length < 3) 
-                    return null;
+            var parts = line.Split(',');
+            if (parts.Length < 14)
+                return (null, null, null, 0);
 
-                // Parse date dari kolom pertama
-                var dateStr = parts[0].Trim();
-                if (dateStr.Length != 8 || !int.TryParse(dateStr, out int dateInt))
-                    return null;
-                    
-                var year = dateInt / 10000;
-                var month = (dateInt / 100) % 100;
-                var day = dateInt % 100;
+            // Parse date dari kolom 0
+            var dateStr = parts[0].Trim();
+            if (dateStr.Length != 8 || !int.TryParse(dateStr, out int dateInt))
+                return (null, null, null, 0);
                 
-                if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31)
-                    return null;
-                    
-                var callDate = new DateTime(year, month, day);
+            var year = dateInt / 10000;
+            var month = (dateInt / 100) % 100;
+            var day = dateInt % 100;
+            
+            if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31)
+                return (null, null, null, 0);
+                
+            var callDate = new DateTime(year, month, day);
 
-                // Parse time dari kolom kedua
-                if (!TimeSpan.TryParse(parts[1].Trim(), out var callTime))
-                    return null;
+            // Parse time dari kolom 1
+            if (!TimeSpan.TryParse(parts[1].Trim(), out var callTime))
+                return (null, null, null, 0);
 
-                // Parse close reason dari kolom kedua terakhir
-                var reasonStr = parts[parts.Length - 2].Trim();
-                if (!int.TryParse(reasonStr, out int callCloseReason))
-                    return null;
+            // Parse CALLED FLEET dari kolom 4
+            var calledFleet = parts[4].Trim();
+            
+            // Parse CALLER FLEET dari kolom 6
+            var callerFleet = parts[6].Trim();
 
-                return new CallRecord
-                {
-                    CallDate = callDate,
-                    CallTime = callTime,
-                    CallCloseReason = callCloseReason,
-                    CreatedAt = DateTime.UtcNow
-                };
-            }
-            catch
+            // Parse ON AIR DURATION dari kolom 13
+            var durationStr = parts[13].Trim();
+            if (!int.TryParse(durationStr, out int duration))
+                duration = 0;
+
+            // Parse close reason
+            var reasonStr = parts.Length > 15 ? parts[parts.Length - 2].Trim() : "0";
+            if (!int.TryParse(reasonStr, out int callCloseReason))
+                callCloseReason = 0;
+
+            var record = new CallRecord
             {
-                return null;
-            }
+                CallDate = callDate,
+                CallTime = callTime,
+                CallCloseReason = callCloseReason,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            return (record, callerFleet, calledFleet, duration);
+        }
+        catch
+        {
+            return (null, null, null, 0);
+        }
         }
 
         private async Task BulkInsertOptimizedAsync(List<CallRecord> records)
@@ -583,7 +618,7 @@ namespace Pm.Services
         private static CallRecordDto ToDto(CallRecord callRecord) => new()
         {
             CallRecordId = callRecord.CallRecordId,
-            CallDate = callRecord.CallDate,
+            CallDate = callRecord.CallDate.Date,
             CallTime = callRecord.CallTime,
             CallCloseReason = callRecord.CallCloseReason,
             CloseReasonDescription = callRecord.GetCloseReasonDescription(),
@@ -609,7 +644,7 @@ namespace Pm.Services
         public async Task ResetAllDataAsync()
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
-            
+
             try
             {
                 _logger.LogWarning("🗑️ Starting database reset...");
@@ -622,7 +657,7 @@ namespace Pm.Services
 
                 await transaction.CommitAsync();
                 stopwatch.Stop();
-                
+
                 _logger.LogWarning("✅ Database reset completed in {Ms}ms", stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
@@ -631,7 +666,179 @@ namespace Pm.Services
                 _logger.LogError(ex, "❌ Error resetting database");
                 throw;
             }
-        }   
+        }
+
+        public async Task<FleetStatisticsDto> GetFleetStatisticsAsync(DateTime date, int top = 10, FleetStatisticType? type = null)
+        {
+            try
+            {
+                var typeStr = type?.ToString() ?? "All";
+                _logger.LogInformation("📊 Getting fleet statistics for {Date}, Top {Top}, Type {Type}", 
+                    date.ToString("yyyy-MM-dd"), top, typeStr);
+
+                var fleetStats = await _context.FleetStatistics
+                    .Where(fs => fs.CallDate.Date == date.Date)
+                    .ToListAsync();
+
+                if (!fleetStats.Any())
+                {
+                    _logger.LogWarning("⚠️ No fleet statistics found for {Date}", date.ToString("yyyy-MM-dd"));
+                    return new FleetStatisticsDto
+                    {
+                        Date = date.Date,
+                        TopCallers = new List<TopCallerFleetDto>(),
+                        TopCalledFleets = new List<TopCalledFleetDto>()
+                    };
+                }
+
+                var selectedType = type ?? FleetStatisticType.All;
+                List<TopCallerFleetDto> topCallers = new();
+                List<TopCalledFleetDto> topCalledFleets = new();
+
+                // Hitung Top Callers (jika diminta)
+                if (selectedType == FleetStatisticType.All || selectedType == FleetStatisticType.Caller)
+                {
+                    topCallers = fleetStats
+                        .GroupBy(fs => fs.CallerFleet)
+                        .Select(g => new
+                        {
+                            CallerFleet = g.Key,
+                            TotalCalls = g.Sum(x => x.CallCount),
+                            TotalDuration = g.Sum(x => x.TotalDuration)
+                        })
+                        .OrderByDescending(x => x.TotalCalls)
+                        .Take(top)
+                        .Select((x, index) => new TopCallerFleetDto
+                        {
+                            Rank = index + 1,
+                            CallerFleet = x.CallerFleet,
+                            TotalCalls = x.TotalCalls,
+                            TotalDurationSeconds = x.TotalDuration,
+                            TotalDurationFormatted = FormatDuration(x.TotalDuration),
+                            AverageDurationSeconds = x.TotalCalls > 0 ? Math.Round((decimal)x.TotalDuration / x.TotalCalls, 2) : 0,
+                            AverageDurationFormatted = FormatDuration(x.TotalCalls > 0 ? x.TotalDuration / x.TotalCalls : 0)
+                        })
+                        .ToList();
+                }
+
+                // Hitung Top Called Fleets (jika diminta)
+                if (selectedType == FleetStatisticType.All || selectedType == FleetStatisticType.Called)
+                {
+                    topCalledFleets = fleetStats
+                        .GroupBy(fs => fs.CalledFleet)
+                        .Select(g => new
+                        {
+                            CalledFleet = g.Key,
+                            TotalCalls = g.Sum(x => x.CallCount),
+                            TotalDuration = g.Sum(x => x.TotalDuration),
+                            UniqueCallers = g.Select(x => x.CallerFleet).Distinct().Count()
+                        })
+                        .OrderByDescending(x => x.TotalCalls)
+                        .Take(top)
+                        .Select((x, index) => new TopCalledFleetDto
+                        {
+                            Rank = index + 1,
+                            CalledFleet = x.CalledFleet,
+                            TotalCalls = x.TotalCalls,
+                            TotalDurationSeconds = x.TotalDuration,
+                            TotalDurationFormatted = FormatDuration(x.TotalDuration),
+                            AverageDurationSeconds = x.TotalCalls > 0 ? Math.Round((decimal)x.TotalDuration / x.TotalCalls, 2) : 0,
+                            AverageDurationFormatted = FormatDuration(x.TotalCalls > 0 ? x.TotalDuration / x.TotalCalls : 0),
+                            UniqueCallers = x.UniqueCallers
+                        })
+                        .ToList();
+                }
+
+                var totalCalls = fleetStats.Sum(fs => fs.CallCount);
+                var totalDuration = fleetStats.Sum(fs => fs.TotalDuration);
+                var uniqueCallers = fleetStats.Select(fs => fs.CallerFleet).Distinct().Count();
+                var uniqueCalledFleets = fleetStats.Select(fs => fs.CalledFleet).Distinct().Count();
+
+                return new FleetStatisticsDto
+                {
+                    Date = date.Date,
+                    TopCallers = topCallers,
+                    TopCalledFleets = topCalledFleets,
+                    TotalCallsInDay = totalCalls,
+                    TotalDurationInDaySeconds = totalDuration,
+                    TotalDurationInDayFormatted = FormatDuration(totalDuration),
+                    TotalUniqueCallers = uniqueCallers,
+                    TotalUniqueCalledFleets = uniqueCalledFleets
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error getting fleet statistics for {Date}", date.ToString("yyyy-MM-dd"));
+                throw;
+            }
+        }
+
+        public async Task BulkInsertFleetStatisticsAsync(List<FleetStatistic> stats)
+        {
+            if (!stats.Any()) return;
+
+            const int batchSize = 5000;
+            var totalBatches = (int)Math.Ceiling((double)stats.Count / batchSize);
+
+            _logger.LogInformation("📦 Inserting {TotalRecords} fleet statistics in {BatchCount} batches",
+                stats.Count, totalBatches);
+
+            for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++)
+            {
+                var batch = stats.Skip(batchIndex * batchSize).Take(batchSize).ToList();
+                
+                try
+                {
+                    var values = new StringBuilder();
+                    var parameters = new List<object>();
+                    
+                    for (int i = 0; i < batch.Count; i++)
+                    {
+                        var s = batch[i];
+                        if (i > 0) values.Append(",");
+                        
+                        var baseIndex = i * 6;
+                        values.Append($"(@p{baseIndex},@p{baseIndex+1},@p{baseIndex+2},@p{baseIndex+3},@p{baseIndex+4},@p{baseIndex+5})");
+                        
+                        parameters.Add(s.CallDate);
+                        parameters.Add(s.CallerFleet);
+                        parameters.Add(s.CalledFleet);
+                        parameters.Add(s.CallCount);
+                        parameters.Add(s.TotalDuration);
+                        parameters.Add(s.CreatedAt);
+                    }
+                    
+                    var sql = $"INSERT INTO FleetStatistics (CallDate, CallerFleet, CalledFleet, CallCount, TotalDuration, CreatedAt) VALUES {values}";
+                    await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray());
+                    
+                    _logger.LogInformation("✅ Fleet stats batch {BatchIndex}/{TotalBatches} inserted: {Count} records", 
+                        batchIndex + 1, totalBatches, batch.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Error inserting fleet stats batch {BatchIndex}", batchIndex);
+                    throw;
+                }
+
+                if (batchIndex < totalBatches - 1)
+                    await Task.Delay(5);
+            }
+        }
+
+        private string FormatDuration(int seconds)
+        {
+            var hours = seconds / 3600;
+            var minutes = (seconds % 3600) / 60;
+            var secs = seconds % 60;
+
+            if (hours > 0)
+                return $"{hours}h {minutes}m {secs}s";
+            else if (minutes > 0)
+                return $"{minutes}m {secs}s";
+            else
+                return $"{secs}s";
+        }
+    
         
     }
 }

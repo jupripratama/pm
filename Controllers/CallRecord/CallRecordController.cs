@@ -345,7 +345,7 @@ namespace Pm.Controllers
                 return ApiResponse.InternalServerError($"Terjadi kesalahan saat menghapus call records: {ex.Message}");
             }
         }
-        
+
         // Di CallRecordController.cs
 
         /// <summary>
@@ -358,19 +358,21 @@ namespace Pm.Controllers
             // Safety check
             if (confirmation != "DELETE_ALL_DATA")
             {
-                return BadRequest(new { 
-                    message = "Konfirmasi tidak valid. Gunakan query parameter: ?confirmation=DELETE_ALL_DATA" 
+                return BadRequest(new
+                {
+                    message = "Konfirmasi tidak valid. Gunakan query parameter: ?confirmation=DELETE_ALL_DATA"
                 });
             }
 
             try
             {
                 _logger.LogWarning("⚠️ RESET DATABASE - Deleting all call records and summaries");
-                
+
                 await _callRecordService.ResetAllDataAsync();
-                
+
                 HttpContext.Items["message"] = "Semua data call records dan summaries berhasil dihapus";
-                return Ok(new { 
+                return Ok(new
+                {
                     message = "Database berhasil direset",
                     warning = "Semua data telah dihapus permanent"
                 });
@@ -379,6 +381,84 @@ namespace Pm.Controllers
             {
                 _logger.LogError(ex, "Error resetting database");
                 return ApiResponse.InternalServerError($"Gagal reset database: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Endpoint untuk mendapatkan Fleet Statistics (Top Caller dan/atau Top Called Fleet)
+        /// </summary>
+        /// <param name="date">Tanggal yang ingin dilihat (format: yyyy-MM-dd). Default: hari ini</param>
+        /// <param name="top">Jumlah top data yang ingin ditampilkan. Default: 10</param>
+        /// <param name="type">Filter tipe data: "caller" (Top Callers saja), "called" (Top Called Fleets saja), atau kosong/null (keduanya). Default: keduanya</param>
+        /// <returns>Fleet statistics sesuai filter</returns>
+        [Authorize(Policy = "CanViewCallRecords")]
+        [HttpGet("fleet-statistics")]
+       [ProducesResponseType(typeof(FleetStatisticsDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetFleetStatistics(
+            [FromQuery] DateTime? date = null,
+            [FromQuery] int top = 10,
+            [FromQuery] FleetStatisticType? type = null)
+        {
+            try
+            {
+                var targetDate = date ?? DateTime.Today;
+                var selectedType = type ?? FleetStatisticType.All;
+                
+                if (top < 1 || top > 100)
+                {
+                    return BadRequest(new
+                    {
+                        statusCode = 400,
+                        message = "Bad Request",
+                        data = new { message = "Parameter 'top' harus antara 1 dan 100" },
+                        meta = (object?)null
+                    });
+                }
+
+                var stats = await _callRecordService.GetFleetStatisticsAsync(targetDate, top, selectedType);
+                
+                if (stats.TopCallers.Count == 0 && stats.TopCalledFleets.Count == 0)
+                {
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = $"Tidak ada data fleet statistics untuk tanggal {targetDate:yyyy-MM-dd}" },
+                        meta = (object?)null
+                    });
+                }
+
+                var message = selectedType switch
+                {
+                    FleetStatisticType.Caller => "Top Caller Fleets berhasil dimuat",
+                    FleetStatisticType.Called => "Top Called Fleets berhasil dimuat",
+                    _ => "Fleet statistics berhasil dimuat"
+                };
+
+                return Ok(new
+                {
+                    statusCode = 200,
+                    message = "Success",
+                    data = stats,
+                    meta = new { 
+                        filter = selectedType.ToString(),
+                        description = message
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting fleet statistics");
+                return BadRequest(new
+                {
+                    statusCode = 400,
+                    message = "Bad Request",
+                    data = new { message = ex.Message },
+                    meta = (object?)null
+                });
             }
         }
     }

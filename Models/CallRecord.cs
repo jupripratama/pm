@@ -28,8 +28,17 @@ namespace Pm.Models
         public string GetCloseReasonDescription() => CallCloseReason switch
         {
             0 => "TE Busy",
-            1 => "Sys Busy",
-            _ => "Others"
+            1 => "System Busy",
+            2 => "No Answer",
+            3 => "Not Found",
+            4 => "Complete",
+            5 => "Preempted",
+            6 => "Timeout",
+            7 => "Inactive",
+            8 => "Callback",
+            9 => "Unsupported Request",
+            10 => "Invalid Call",
+            _ => $"Unknown ({CallCloseReason})"
         };
     }
 }

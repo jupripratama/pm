@@ -1,8 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace Pm.DTOs.CallRecord
 {
     public class CallRecordDto
     {
         public int CallRecordId { get; set; }
+        [JsonIgnore] // Ignore property asli
         public DateTime CallDate { get; set; }
         public TimeSpan CallTime { get; set; }
         public int CallCloseReason { get; set; }

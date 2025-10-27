@@ -41,6 +41,7 @@ namespace Pm.Controllers
         /// Upload dan import file CSV call records
         /// </summary>
         [Authorize(Policy = "CanImportCallRecords")]
+        [DisableRequestSizeLimit]
         [HttpPost("import-csv")]
         public async Task<IActionResult> ImportCsv(IFormFile file)
         {

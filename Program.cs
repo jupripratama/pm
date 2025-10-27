@@ -11,6 +11,7 @@ using Pm.Middleware;
 using Pm.DTOs;
 using Pm.Validators;
 using OfficeOpenXml;
+using Microsoft.AspNetCore.Http.Features;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -118,7 +119,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://pmfrontend.vercel.app",
-            "pmfrontend-j8aoosu8i-jupripratamas-projects.vercel.app"
+            "https://vercel.com/jupripratamas-projects/pmfrontend/346QCvocEBSSC2CTMDRRig5WzPzS",
+            "http://localhost:3000" // untuk testing lokal
         )
         .AllowAnyHeader()
         .AllowAnyMethod()
@@ -132,6 +134,17 @@ builder.Services.AddLogging(config =>
     config.AddConsole();
     config.AddDebug();
 });
+
+builder.Services.Configure<IISServerOptions>(options =>
+{
+    options.MaxRequestBodySize = int.MaxValue;
+});
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 1073741824; // 1GB
+});
+
 
 var app = builder.Build();
 

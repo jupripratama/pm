@@ -118,7 +118,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://pmfrontend.vercel.app",
-            "https://pmfrontend-h8bjzaycl-jupripratamas-projects.vercel.app"
+            "pmfrontend-j8aoosu8i-jupripratamas-projects.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod()

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: pm-api
+    env: docker
+    plan: free
+    buildCommand: |
+      dotnet publish -c Release -o out
+    startCommand: |
+      dotnet out/Pm.dll
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+
+      # 🔐 Connection String (DB TiDB)
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+
+      # 🔐 JWT Settings
+      - key: JwtSettings__SecretKey
+        sync: false
+      - key: JwtSettings__Issuer
+        sync: false
+      - key: JwtSettings__Audience
+        sync: false
+      - key: JwtSettings__ExpirationInHours
+        sync: false
+
+    healthCheckPath: /swagger/index.html
+    autoDeploy: true

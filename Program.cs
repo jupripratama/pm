@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -15,36 +14,30 @@ using OfficeOpenXml;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// set EPPlus license sekali saat startup (pilih salah satu)
+// ===== EPPlus License =====
 ExcelPackage.License.SetNonCommercialOrganization("MKN");
-// or ExcelPackage.License.SetNonCommercialPersonal("Your Name");
-// or ExcelPackage.License.SetCommercial("YOUR-COMMERCIAL-LICENSE-KEY");
 
-
-
-
-// Add services to the container.
+// ===== Add Controllers =====
 builder.Services.AddControllers(options =>
 {
-    // Add the response wrapper filter globally
-    options.Filters.Add<ResponseWrapperFilter>();
+    options.Filters.Add<ResponseWrapperFilter>(); // wrapper response global
 });
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// ===== Swagger Configuration =====
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = "PM MKN API", 
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "PM MKN API",
         Version = "v1",
         Description = "API PM & Documentation"
     });
 
-    // Add JWT Authentication to Swagger
+    // JWT di Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Description = "Gunakan format: Bearer {token}",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -56,35 +49,28 @@ builder.Services.AddSwaggerGen(c =>
         {
             new OpenApiSecurityScheme
             {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
             },
             Array.Empty<string>()
         }
     });
-
-    // Include XML comments if you have them
-    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
-    {
-        c.IncludeXmlComments(xmlPath);
-    }
 });
 
-// Add Database Context
+// ===== Database Context =====
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        throw new InvalidOperationException("Connection string 'DefaultConnection' tidak ditemukan. Pastikan sudah diatur di Render Environment Variables.");
+    }
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 });
 
-// Add JWT Authentication
+// ===== JWT Authentication =====
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey not configured");
+var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan di konfigurasi.");
+
 var key = Encoding.ASCII.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
@@ -94,7 +80,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false; // Set to true in production
+    options.RequireHttpsMetadata = true; // aktifkan HTTPS di production
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -107,70 +93,40 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
-
-    options.Events = new JwtBearerEvents
-    {
-        OnChallenge = context =>
-        {
-            context.HandleResponse();
-            context.Response.StatusCode = 401;
-            context.Response.ContentType = "application/json";
-            var result = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                statusCode = 401,
-                message = "Unauthorized",
-                data = new { message = "Token tidak valid atau sudah expired" },
-                meta = (object?)null
-            });
-            return context.Response.WriteAsync(result);
-        },
-        OnForbidden = context =>
-        {
-            context.Response.StatusCode = 403;
-            context.Response.ContentType = "application/json";
-            var result = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                statusCode = 403,
-                message = "Forbidden",
-                data = new { message = "Anda tidak memiliki akses untuk resource ini" },
-                meta = (object?)null
-            });
-            return context.Response.WriteAsync(result);
-        }
-    };
 });
 
-// Add Authorization with custom policies
+// ===== Authorization Policy =====
 builder.Services.AddAuthorization(options =>
 {
     options.AddCustomAuthorizationPolicies();
 });
 
-
-
-// Add Services
+// ===== Services =====
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<ICallRecordService, CallRecordService>();
 builder.Services.AddScoped<IExcelExportService, ExcelExportService>();
 
-// Add FluentValidation
+// ===== Fluent Validation =====
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();
 
-// Add CORS
+// ===== CORS =====
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("https://your-frontend-url.com") // URL FE kamu
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+        policy.WithOrigins(
+            "https://pmfrontend.vercel.app",
+            "https://pmfrontend-h8bjzaycl-jupripratamas-projects.vercel.app"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials();
     });
 });
 
-// Add Logging
+// ===== Logging =====
 builder.Services.AddLogging(config =>
 {
     config.AddConsole();
@@ -179,67 +135,54 @@ builder.Services.AddLogging(config =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-app.UseSwagger(); // Always generate Swagger JSON
+// ===== Middleware Pipeline =====
+app.UseSwagger();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1 - DEV");
-        c.RoutePrefix = "swagger"; 
-        c.DocumentTitle = "PM MKN API - Development";
-        c.EnablePersistAuthorization();
-        c.EnableDeepLinking();
-        c.DisplayOperationId();
-        c.DisplayRequestDuration();
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1 (DEV)");
+        c.RoutePrefix = "swagger";
     });
 }
 else
 {
-    // Production - minimal configuration
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1");
-        c.RoutePrefix = string.Empty; // Root path - atau "api-docs" untuk lebih aman
-        c.DocumentTitle = "PM MKN API";
-        c.EnablePersistAuthorization();
+        c.RoutePrefix = string.Empty;
     });
 }
 
-// Add Error Handling Middleware
+// ===== Error Handling =====
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
 app.UseHttpsRedirection();
 
-// Add CORS
-app.UseCors("AllowAll");
+// ===== Enable CORS untuk frontend =====
+app.UseCors("AllowFrontend");
 
-// Add Authentication & Authorization
+// ===== Authentication & Authorization =====
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure Database is created and migrated
+// ===== Database Migration (otomatis buat DB jika belum ada) =====
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     try
     {
-        // This will create the database if it doesn't exist and apply any pending migrations
         context.Database.EnsureCreated();
-        
-        // If you prefer migrations, use this instead:
-        // context.Database.Migrate();
-        
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("Database initialized successfully");
+        logger.LogInformation("Database initialized successfully.");
     }
     catch (Exception ex)
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while initializing the database");
+        logger.LogError(ex, "An error occurred while initializing the database.");
         throw;
     }
 }

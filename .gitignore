@@ -1,0 +1,7 @@
+# .NET build files
+bin/
+obj/
+
+# Konfigurasi rahasia
+appsettings.Development.json
+appsettings.Production.json

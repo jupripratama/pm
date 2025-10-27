@@ -119,7 +119,9 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://pmfrontend.vercel.app",
-            "http://localhost:3000" // untuk testing lokal
+            "http://localhost:3000", // untuk testing lokal
+            "http://localhost:5173", // Vite default port
+            "https://pmfrontend-git-*-jupripratamas-projects.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod()

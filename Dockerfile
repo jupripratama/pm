@@ -1,19 +1,19 @@
-# Gunakan .NET 8 SDK untuk build
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
+EXPOSE 8080
 
-# Copy csproj dan restore dependencies
-COPY *.sln .
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
 COPY ["Pm/Pm.csproj", "Pm/"]
 RUN dotnet restore "Pm/Pm.csproj"
-
-# Copy seluruh source dan build
 COPY . .
-WORKDIR "/app/Pm"
-RUN dotnet publish "Pm.csproj" -c Release -o /out
+WORKDIR "/src/Pm"
+RUN dotnet build "Pm.csproj" -c Release -o /app/build
 
-# Gunakan runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM build AS publish
+RUN dotnet publish "Pm.csproj" -c Release -o /app/publish
+
+FROM base AS final
 WORKDIR /app
-COPY --from=build /out .
+COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "Pm.dll"]

@@ -119,7 +119,6 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://pmfrontend.vercel.app",
-            "https://vercel.com/jupripratamas-projects/pmfrontend/346QCvocEBSSC2CTMDRRig5WzPzS",
             "http://localhost:3000" // untuk testing lokal
         )
         .AllowAnyHeader()

@@ -103,9 +103,16 @@ builder.Services.AddAuthorization(options =>
 });
 
 // ===== Services =====
+// User & Auth Services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+
+// Role & Permission Services
+builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+
+// Call Record Services
 builder.Services.AddScoped<ICallRecordService, CallRecordService>();
 builder.Services.AddScoped<IExcelExportService, ExcelExportService>();
 
@@ -119,12 +126,12 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://pmfrontend.vercel.app",
-            "http://localhost:3000", 
+            "http://localhost:3000",
             "http://localhost:5173",
-            // ✅ TAMBAH INI untuk semua preview URLs
+            // TAMBAH INI untuk semua preview URLs
             "https://pmfrontend-*.vercel.app",
             "https://pmfrontend-git-*-jupripratamas-projects.vercel.app",
-            "https://*.vercel.app" // ✅ ATAU INI untuk semua Vercel domains
+            "https://*.vercel.app" // ATAU INI untuk semua Vercel domains
         )
         .AllowAnyHeader()
         .AllowAnyMethod()

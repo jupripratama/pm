@@ -60,7 +60,26 @@ namespace Pm.Helper
                 policy.RequireClaim("Permission", "callrecord.delete"));
             options.AddPolicy("CanDeleteAllData", policy =>
                 policy.RequireClaim("Permission", "delete.all-data"));
-            
+
+
+            // Setting
+            options.AddPolicy("CanViewSettings", policy =>
+                policy.RequireClaim("Permission", "system.settings.view"));
+
+            options.AddPolicy("CanEditSettings", policy =>
+                policy.RequireClaim("Permission", "system.settings.edit"));
+
+            options.AddPolicy("CanViewAuditLog", policy =>
+                policy.RequireClaim("Permission", "system.audit.view"));
+
+
+            options.AddPolicy("CanManageUsers", policy =>
+                policy.RequireClaim("Permission", "manage.user.create", "manage.user.update", "manage.user.delete"));
+
+            options.AddPolicy("CanManageRoles", policy =>
+                policy.RequireClaim("Permission", "manage.role.create", "manage.role.update", "manage.role.delete"));
         }
+
+
     }
 }

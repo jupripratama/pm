@@ -17,6 +17,5 @@ namespace Pm.DTOs
         public int? RoleId { get; set; }
 
         public bool? IsActive { get; set; }
-
     }
 }

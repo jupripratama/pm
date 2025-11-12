@@ -47,6 +47,10 @@
               "target": "Package",
               "version": "[4.0.3, )"
             },
+            "CloudinaryDotNet": {
+              "target": "Package",
+              "version": "[1.27.8, )"
+            },
             "EFCore.BulkExtensions": {
               "target": "Package",
               "version": "[8.1.2, )"

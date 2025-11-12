@@ -126,7 +126,7 @@ namespace Pm.Services
                 FullName = dto.FullName,
                 Email = dto.Email,
                 RoleId = dto.RoleId ?? 3, // Default to User role (RoleId = 3)
-                IsActive = true,
+                IsActive = false,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -253,12 +253,35 @@ namespace Pm.Services
             return await query.AnyAsync();
         }
 
+        public async Task<bool> UpdateUserPhotoAsync(int userId, string? photoUrl)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("User not found for photo update: {UserId}", userId);
+                return false;
+            }
+
+            user.PhotoUrl = photoUrl;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("User photo updated successfully: {UserId}", userId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user photo: {UserId}", userId);
+                return false;
+            }
+        }
+
         public async Task<bool> RoleExistsAsync(int roleId)
         {
             return await _context.Roles.AnyAsync(r => r.RoleId == roleId && r.IsActive);
         }
-
-
 
         private IQueryable<User> ApplySorting(IQueryable<User> query, string? sortBy, string? sortDir)
         {
@@ -285,6 +308,7 @@ namespace Pm.Services
                 Username = user.Username,
                 FullName = user.FullName,
                 Email = user.Email,
+                PhotoUrl = user.PhotoUrl, // Added PhotoUrl
                 IsActive = user.IsActive,
                 RoleId = user.RoleId,
                 RoleName = user.Role?.RoleName,

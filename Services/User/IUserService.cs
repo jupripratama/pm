@@ -14,6 +14,7 @@ namespace Pm.Services
         Task<bool> DeleteUserAsync(int userId);
         Task<bool> IsUsernameExistsAsync(string username, int? excludeUserId = null);
         Task<bool> IsEmailExistsAsync(string email, int? excludeUserId = null);
-        Task<bool> RoleExistsAsync(int value);
+        Task<bool> UpdateUserPhotoAsync(int userId, string? photoUrl);
+        Task<bool> RoleExistsAsync(int roleId);
     }
 }

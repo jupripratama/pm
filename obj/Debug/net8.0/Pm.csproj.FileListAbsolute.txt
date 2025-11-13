@@ -8,6 +8,7 @@ D:\C#\PM\Pm\bin\Debug\net8.0\Pm.pdb
 D:\C#\PM\Pm\bin\Debug\net8.0\Azure.Core.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Azure.Identity.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\BCrypt.Net-Next.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\CloudinaryDotNet.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.Core.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.MySql.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.PostgreSql.dll
@@ -62,6 +63,7 @@ D:\C#\PM\Pm\bin\Debug\net8.0\MySqlConnector.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\NetTopologySuite.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\NetTopologySuite.IO.SpatiaLite.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\NetTopologySuite.IO.SqlServerBytes.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\Newtonsoft.Json.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Npgsql.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Pomelo.EntityFrameworkCore.MySql.dll
@@ -187,5 +189,3 @@ D:\C#\PM\Pm\obj\Debug\net8.0\refint\Pm.dll
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.pdb
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.genruntimeconfig.cache
 D:\C#\PM\Pm\obj\Debug\net8.0\ref\Pm.dll
-d:\C#\PM\Pm\bin\Debug\net8.0\CloudinaryDotNet.dll
-d:\C#\PM\Pm\bin\Debug\net8.0\Newtonsoft.Json.dll

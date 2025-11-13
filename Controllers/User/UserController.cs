@@ -386,6 +386,7 @@ namespace Pm.Controllers
                     if (!string.IsNullOrEmpty(publicId))
                     {
                         await _cloudinaryService.DeleteImageAsync(publicId);
+                        _logger.LogInformation("Old photo deleted from Cloudinary: {PublicId}", publicId);
                     }
                 }
 
@@ -402,7 +403,9 @@ namespace Pm.Controllers
                     });
                 }
 
-                // Update user photo URL
+                _logger.LogInformation("New photo uploaded to Cloudinary: {PhotoUrl}", photoUrl);
+
+                // ✅ Update user photo URL
                 var updated = await _userService.UpdateUserPhotoAsync(userId, photoUrl);
                 if (!updated)
                 {
@@ -422,6 +425,9 @@ namespace Pm.Controllers
                     });
                 }
 
+                _logger.LogInformation("Photo URL saved to database for user: {UserId}", userId);
+
+                // ✅ Return updated photo URL
                 HttpContext.Items["message"] = "Photo profile berhasil diupload";
                 return Ok(new UpdatePhotoResponseDto
                 {
@@ -447,7 +453,6 @@ namespace Pm.Controllers
         /// </summary>
         /// <param name="userId">User ID</param>
         /// <returns>Status deletion</returns>
-        [Authorize]
         [HttpDelete("{userId}/photo")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]

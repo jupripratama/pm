@@ -128,7 +128,13 @@ namespace Pm.Controllers
             }
 
             HttpContext.Items["message"] = "Login berhasil";
-            return Ok(result);
+            return Ok(new
+            {
+                statusCode = StatusCodes.Status200OK,
+                message = "Login berhasil",
+                data = result,
+                meta = (object?)null
+            });
         }
 
         /// <summary>
@@ -189,43 +195,41 @@ namespace Pm.Controllers
         }
 
         /// <summary>
-        /// Get current user profile
+        /// Get current user profile - FIXED RESPONSE STRUCTURE
         /// </summary>
         /// <returns>Current user information</returns>
         [Authorize]
         [HttpGet("profile")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public IActionResult GetProfile()
+        public async Task<IActionResult> GetProfile()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var username = User.FindFirst(ClaimTypes.Name)?.Value;
-            var email = User.FindFirst(ClaimTypes.Email)?.Value;
-            var fullName = User.FindFirst("FullName")?.Value;
-            var roleId = User.FindFirst("RoleId")?.Value;
-            var roleName = User.FindFirst("RoleName")?.Value;
-            var photoUrl = User.FindFirst("PhotoUrl")?.Value;
-            var permissions = User.FindAll("Permission").Select(c => c.Value).ToList();
-
             if (!int.TryParse(userIdClaim, out var userId))
             {
                 return Unauthorized();
             }
 
-            var profile = new
+            var userDto = await _userService.GetUserByIdAsync(userId);
+            if (userDto == null)
             {
-                userId = userId,
-                username = username,
-                email = email,
-                fullName = fullName,
-                photoUrl = photoUrl,
-                roleId = int.TryParse(roleId, out var rId) ? rId : 0,
-                roleName = roleName,
-                permissions = permissions
-            };
+                return NotFound(new
+                {
+                    statusCode = 404,
+                    message = "User tidak ditemukan",
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
 
-            HttpContext.Items["message"] = "Profile berhasil dimuat";
-            return Ok(profile);
+            // ✅ STANDARDIZED RESPONSE - sama seperti endpoint lainnya
+            return Ok(new
+            {
+                statusCode = 200,
+                message = "Profile berhasil dimuat",
+                data = userDto,
+                meta = (object?)null
+            });
         }
 
         /// <summary>
@@ -237,8 +241,6 @@ namespace Pm.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Logout()
         {
-            // Dalam implementasi JWT, logout biasanya handled di client side
-            // dengan menghapus token dari storage
             return Ok(new
             {
                 statusCode = StatusCodes.Status200OK,

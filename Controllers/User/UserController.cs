@@ -3,170 +3,66 @@ using Microsoft.AspNetCore.Mvc;
 using Pm.DTOs;
 using Pm.DTOs.Common;
 using Pm.Services;
+using FluentValidation;
 
 namespace Pm.Controllers
 {
-    [Route("api/permissions")]
+    [Route("api/users")]
     [ApiController]
     [Produces("application/json")]
     [ApiConventionType(typeof(DefaultApiConventions))]
-    public class PermissionController : ControllerBase
+    public class UserController : ControllerBase
     {
-        private readonly IPermissionService _permissionService;
-        private readonly ILogger<PermissionController> _logger;
+        private readonly IUserService _userService;
+        private readonly ICloudinaryService _cloudinaryService;
+        private readonly ILogger<UserController> _logger;
+        private readonly IValidator<CreateUserDto> _createUserValidator;
+        private readonly IValidator<UpdateUserDto> _updateUserValidator;
 
-        public PermissionController(
-            IPermissionService permissionService,
-            ILogger<PermissionController> logger)
+        public UserController(
+            IUserService userService,
+            ICloudinaryService cloudinaryService,
+            ILogger<UserController> logger,
+            IValidator<CreateUserDto> createUserValidator,
+            IValidator<UpdateUserDto> updateUserValidator)
         {
-            _permissionService = permissionService;
+            _userService = userService;
+            _cloudinaryService = cloudinaryService;
             _logger = logger;
+            _createUserValidator = createUserValidator;
+            _updateUserValidator = updateUserValidator;
         }
 
         /// <summary>
-        /// Mendapatkan semua permissions
+        /// Endpoint untuk mendapatkan daftar semua user dengan filter, sorting, dan pagination
         /// </summary>
-        /// <returns>Daftar permissions</returns>
-        [Authorize(Policy = "CanViewPermissions")]
+        /// <param name="dto">Query parameters</param>
+        /// <returns>Daftar user dalam format ter-paginasi</returns>
+        [Authorize(Policy = "CanViewUsers")]
         [HttpGet]
-        [ProducesResponseType(typeof(List<PermissionDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(PagedResultDto<UserDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> GetAllPermissions()
+        public async Task<IActionResult> GetAllUsers([FromQuery] UserQueryDto dto)
         {
-            var permissions = await _permissionService.GetAllPermissionsAsync();
-            HttpContext.Items["message"] = "Daftar permissions berhasil dimuat";
-            return Ok(permissions);
+            var users = await _userService.GetUsersAsync(dto);
+            HttpContext.Items["message"] = "Daftar user berhasil dimuat";
+            return Ok(users);
         }
 
         /// <summary>
-        /// Mendapatkan permissions berdasarkan group
-        /// </summary>
-        /// <param name="group">Nama group permission</param>
-        /// <returns>Daftar permissions by group</returns>
-        [Authorize(Policy = "CanViewPermissions")]
-        [HttpGet("by-group/{group}")]
-        [ProducesResponseType(typeof(List<PermissionDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> GetPermissionsByGroup(string group)
-        {
-            var permissions = await _permissionService.GetPermissionsByGroupAsync(group);
-            HttpContext.Items["message"] = $"Permissions untuk group {group} berhasil dimuat";
-            return Ok(permissions);
-        }
-
-        /// <summary>
-        /// Mendapatkan semua groups yang tersedia
-        /// </summary>
-        /// <returns>Daftar groups</returns>
-        [Authorize(Policy = "CanViewPermissions")]
-        [HttpGet("groups")]
-        [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> GetPermissionGroups()
-        {
-            var groups = await _permissionService.GetPermissionGroupsAsync();
-            HttpContext.Items["message"] = "Daftar groups berhasil dimuat";
-            return Ok(groups);
-        }
-
-        /// <summary>
-        /// Mendapatkan permissions untuk role tertentu
-        /// </summary>
-        /// <param name="roleId">Role ID</param>
-        /// <returns>Daftar permissions untuk role</returns>
-        [Authorize(Policy = "CanViewPermissions")]
-        [HttpGet("role/{roleId}")]
-        [ProducesResponseType(typeof(List<PermissionDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> GetPermissionsByRole(int roleId)
-        {
-            var permissions = await _permissionService.GetPermissionsByRoleAsync(roleId);
-            if (permissions == null)
-            {
-                return NotFound(new
-                {
-                    statusCode = 404,
-                    message = "Not Found",
-                    data = new { message = "Role tidak ditemukan" },
-                    meta = (object?)null
-                });
-            }
-
-            HttpContext.Items["message"] = "Permissions untuk role berhasil dimuat";
-            return Ok(permissions);
-        }
-
-        /// <summary>
-        /// Update permissions untuk role tertentu
-        /// </summary>
-        /// <param name="roleId">Role ID</param>
-        /// <param name="dto">Permission IDs yang akan di-assign</param>
-        /// <returns>Status update</returns>
-        [Authorize(Policy = "CanEditPermissions")]
-        [HttpPut("role/{roleId}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> UpdateRolePermissions(int roleId, [FromBody] UpdateRolePermissionsDto dto)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            try
-            {
-                var result = await _permissionService.UpdateRolePermissionsAsync(roleId, dto.PermissionIds);
-                if (!result)
-                {
-                    return NotFound(new
-                    {
-                        statusCode = 404,
-                        message = "Not Found",
-                        data = new { message = "Role tidak ditemukan" },
-                        meta = (object?)null
-                    });
-                }
-
-                var updatedPermissions = await _permissionService.GetPermissionsByRoleAsync(roleId);
-
-                return Ok(new
-                {
-                    statusCode = 200,
-                    message = "Permissions berhasil diperbarui",
-                    data = updatedPermissions,
-                    meta = (object?)null
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating role permissions for RoleId: {RoleId}", roleId);
-                return BadRequest(new
-                {
-                    statusCode = StatusCodes.Status400BadRequest,
-                    message = ex.Message,
-                    data = new { },
-                    meta = (object?)null
-                });
-            }
-        }
-
-        /// <summary>
-        /// Mendapatkan permissions untuk user tertentu
+        /// Endpoint untuk mendapatkan user berdasarkan ID
         /// </summary>
         /// <param name="userId">User ID</param>
-        /// <returns>Daftar permissions user</returns>
-        [Authorize(Policy = "CanViewPermissions")]
-        [HttpGet("user/{userId}")]
-        [ProducesResponseType(typeof(List<PermissionDto>), StatusCodes.Status200OK)]
+        /// <returns>Detail user</returns>
+        [Authorize(Policy = "CanViewDetailUsers")]
+        [HttpGet("{userId}")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> GetPermissionsByUser(int userId)
+        public async Task<IActionResult> GetUserById([FromRoute] int userId)
         {
-            var permissions = await _permissionService.GetPermissionsByUserAsync(userId);
-            if (permissions == null)
+            var user = await _userService.GetUserByIdAsync(userId);
+            if (user == null)
             {
                 return NotFound(new
                 {
@@ -177,91 +73,63 @@ namespace Pm.Controllers
                 });
             }
 
-            HttpContext.Items["message"] = "Permissions untuk user berhasil dimuat";
-            return Ok(permissions);
+            HttpContext.Items["message"] = "User berhasil dimuat";
+            return Ok(user);
         }
 
         /// <summary>
-        /// Membuat permission baru (Super Admin only)
+        /// Endpoint untuk membuat user baru
         /// </summary>
-        /// <param name="dto">Data permission baru</param>
-        /// <returns>Permission yang dibuat</returns>
-        [Authorize(Policy = "IsSuperAdmin")]
+        /// <param name="dto">Data user baru</param>
+        /// <returns>User yang telah dibuat</returns>
+        [Authorize(Policy = "CanCreateUsers")]
         [HttpPost]
-        [ProducesResponseType(typeof(PermissionDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> CreatePermission([FromBody] CreatePermissionDto dto)
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
         {
+            // Validasi menggunakan FluentValidation
+            var validationResult = await _createUserValidator.ValidateAsync(dto);
+            if (!validationResult.IsValid)
+            {
+                foreach (var error in validationResult.Errors)
+                {
+                    ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+                }
+            }
+
             if (!ModelState.IsValid)
             {
+                _logger.LogWarning("CreateUser validation failed: {@ModelState}", ModelState);
                 return BadRequest(ModelState);
             }
 
             try
             {
-                var permission = await _permissionService.CreatePermissionAsync(dto);
-
-                return StatusCode(StatusCodes.Status201Created, new
+                var user = await _userService.CreateUserAsync(dto);
+                if (user == null)
                 {
-                    statusCode = StatusCodes.Status201Created,
-                    message = "Permission berhasil dibuat",
-                    data = permission,
-                    meta = (object?)null
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating permission");
-                return BadRequest(new
-                {
-                    statusCode = StatusCodes.Status400BadRequest,
-                    message = ex.Message,
-                    data = new { },
-                    meta = (object?)null
-                });
-            }
-        }
-
-        /// <summary>
-        /// Update permission (Super Admin only)
-        /// </summary>
-        /// <param name="permissionId">Permission ID</param>
-        /// <param name="dto">Data permission yang diupdate</param>
-        /// <returns>Permission yang diupdate</returns>
-        [Authorize(Policy = "IsSuperAdmin")]
-        [HttpPut("{permissionId}")]
-        [ProducesResponseType(typeof(PermissionDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> UpdatePermission(int permissionId, [FromBody] UpdatePermissionDto dto)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            try
-            {
-                var permission = await _permissionService.UpdatePermissionAsync(permissionId, dto);
-                if (permission == null)
-                {
-                    return NotFound(new
+                    return BadRequest(new
                     {
-                        statusCode = 404,
-                        message = "Not Found",
-                        data = new { message = "Permission tidak ditemukan" },
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Gagal membuat user",
+                        data = new { message = "Username atau email mungkin sudah digunakan" },
                         meta = (object?)null
                     });
                 }
 
-                HttpContext.Items["message"] = "Permission berhasil diperbarui";
-                return Ok(permission);
+                return StatusCode(StatusCodes.Status201Created, new
+                {
+                    statusCode = StatusCodes.Status201Created,
+                    message = "User berhasil dibuat",
+                    data = user,
+                    meta = (object?)null
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating permission: {PermissionId}", permissionId);
+                _logger.LogError(ex, "Error creating user");
                 return BadRequest(new
                 {
                     statusCode = StatusCodes.Status400BadRequest,
@@ -273,27 +141,376 @@ namespace Pm.Controllers
         }
 
         /// <summary>
-        /// Hapus permission (Super Admin only)
+        /// Activate atau deactivate user (Super Admin / Admin only)
         /// </summary>
-        /// <param name="permissionId">Permission ID</param>
-        /// <returns>Status penghapusan</returns>
-        [Authorize(Policy = "IsSuperAdmin")]
-        [HttpDelete("{permissionId}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <param name="userId">User ID</param>
+        /// <param name="dto">Activation status</param>
+        /// <returns>Updated user</returns>
+        [Authorize(Policy = "CanUpdateUsers")]
+        [HttpPatch("{userId}/activate")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> DeletePermission(int permissionId)
+        public async Task<IActionResult> ActivateUser(int userId, [FromBody] ActivateUserDto dto)
         {
+            var user = await _userService.GetUserEntityByIdAsync(userId);
+            if (user == null)
+            {
+                return NotFound(new
+                {
+                    statusCode = 404,
+                    message = "Not Found",
+                    data = new { message = "User tidak ditemukan" },
+                    meta = (object?)null
+                });
+            }
+
+            var updateDto = new UpdateUserDto
+            {
+                IsActive = dto.IsActive
+            };
+
             try
             {
-                var result = await _permissionService.DeletePermissionAsync(permissionId);
-                if (!result)
+                var updated = await _userService.UpdateUserAsync(userId, updateDto);
+                if (!updated)
                 {
                     return NotFound(new
                     {
                         statusCode = 404,
                         message = "Not Found",
-                        data = new { message = "Permission tidak ditemukan" },
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                var updatedUser = await _userService.GetUserByIdAsync(userId);
+                var message = dto.IsActive ? "User berhasil diaktivasi" : "User berhasil dinonaktifkan";
+
+                HttpContext.Items["message"] = message;
+                return Ok(updatedUser);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error activating/deactivating user {UserId}", userId);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = ex.Message,
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
+        }
+
+        /// <summary>
+        /// Endpoint untuk memperbarui user yang sudah ada
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <param name="dto">Data user yang akan diupdate</param>
+        /// <returns>User yang telah diupdate</returns>
+        [Authorize(Policy = "CanUpdateUsers")]
+        [HttpPut("{userId}")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> UpdateUser(int userId, [FromBody] UpdateUserDto dto)
+        {
+            // Cek apakah user ada
+            var existingUser = await _userService.GetUserEntityByIdAsync(userId);
+            if (existingUser == null)
+            {
+                return NotFound(new
+                {
+                    statusCode = 404,
+                    message = "Not Found",
+                    data = new { message = "User tidak ditemukan" },
+                    meta = (object?)null
+                });
+            }
+
+            // Validasi menggunakan FluentValidation
+            var validationResult = await _updateUserValidator.ValidateAsync(dto);
+            if (!validationResult.IsValid)
+            {
+                foreach (var error in validationResult.Errors)
+                {
+                    ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+                }
+            }
+
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState
+                    .Where(e => e.Value?.Errors.Count > 0)
+                    .ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                    );
+
+                return BadRequest(new
+                {
+                    statusCode = 400,
+                    message = "Bad Request",
+                    data = errors,
+                    meta = (object?)null
+                });
+            }
+
+            // Cek apakah ada perubahan data
+            bool isSame =
+                (dto.FullName == null || dto.FullName == existingUser.FullName) &&
+                (dto.Username == null || dto.Username == existingUser.Username) &&
+                (dto.Email == null || dto.Email == existingUser.Email) &&
+                (dto.RoleId == null || dto.RoleId == existingUser.RoleId) &&
+                (dto.IsActive == null || dto.IsActive == existingUser.IsActive);
+
+            if (isSame)
+            {
+                return BadRequest(new
+                {
+                    statusCode = 400,
+                    message = "Tidak ada perubahan data",
+                    data = new { message = "Tidak ada field yang berubah" },
+                    meta = (object?)null
+                });
+            }
+
+            try
+            {
+                var updated = await _userService.UpdateUserAsync(userId, dto);
+                if (!updated)
+                {
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                var user = await _userService.GetUserByIdAsync(userId);
+                HttpContext.Items["message"] = "User berhasil diperbarui";
+                return Ok(user);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user {UserId}", userId);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = ex.Message,
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
+        }
+
+        /// <summary>
+        /// Endpoint untuk menghapus user berdasarkan UserId
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <returns>Status penghapusan</returns>
+        [Authorize(Policy = "CanDeleteUsers")]
+        [HttpDelete("{userId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> DeleteUser(int userId)
+        {
+            var deleted = await _userService.DeleteUserAsync(userId);
+            if (!deleted)
+            {
+                return NotFound(new
+                {
+                    statusCode = 404,
+                    message = "Not Found",
+                    data = new { message = "User tidak ditemukan" },
+                    meta = (object?)null
+                });
+            }
+
+            return Ok(new
+            {
+                statusCode = 200,
+                message = "Success",
+                data = new { message = "User berhasil dihapus" },
+                meta = (object?)null
+            });
+        }
+
+        /// <summary>
+        /// Upload photo profile untuk user
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <param name="dto">Photo file</param>
+        /// <returns>Updated photo URL</returns>
+        [Authorize]
+        [HttpPost("{userId}/photo")]
+        [ProducesResponseType(typeof(UpdatePhotoResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> UploadUserPhoto(int userId, [FromForm] UploadPhotoDto dto)
+        {
+            try
+            {
+                // Check if user can update their own photo or has permission to update others
+                var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var canUpdateOthers = User.HasClaim("Permission", "user.update");
+
+                if (userId.ToString() != currentUserId && !canUpdateOthers)
+                {
+                    return Forbid();
+                }
+
+                // Get existing user
+                var user = await _userService.GetUserEntityByIdAsync(userId);
+                if (user == null)
+                {
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                // Delete old photo if exists
+                if (!string.IsNullOrEmpty(user.PhotoUrl))
+                {
+                    var publicId = _cloudinaryService.GetPublicIdFromUrl(user.PhotoUrl);
+                    if (!string.IsNullOrEmpty(publicId))
+                    {
+                        await _cloudinaryService.DeleteImageAsync(publicId);
+                        _logger.LogInformation("Old photo deleted from Cloudinary: {PublicId}", publicId);
+                    }
+                }
+
+                // Upload new photo
+                var photoUrl = await _cloudinaryService.UploadImageAsync(dto.Photo, $"profile/{userId}");
+                if (string.IsNullOrEmpty(photoUrl))
+                {
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Gagal upload photo",
+                        data = new { message = "Photo tidak dapat diupload. Silakan coba lagi." },
+                        meta = (object?)null
+                    });
+                }
+
+                _logger.LogInformation("New photo uploaded to Cloudinary: {PhotoUrl}", photoUrl);
+
+                // ✅ Update user photo URL
+                var updated = await _userService.UpdateUserPhotoAsync(userId, photoUrl);
+                if (!updated)
+                {
+                    // Rollback: delete uploaded photo if database update fails
+                    var publicId = _cloudinaryService.GetPublicIdFromUrl(photoUrl);
+                    if (!string.IsNullOrEmpty(publicId))
+                    {
+                        await _cloudinaryService.DeleteImageAsync(publicId);
+                    }
+
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Gagal update photo",
+                        data = new { message = "Gagal menyimpan photo ke database" },
+                        meta = (object?)null
+                    });
+                }
+
+                _logger.LogInformation("Photo URL saved to database for user: {UserId}", userId);
+
+                // ✅ Return updated photo URL
+                HttpContext.Items["message"] = "Photo profile berhasil diupload";
+                return Ok(new UpdatePhotoResponseDto
+                {
+                    PhotoUrl = photoUrl,
+                    Message = "Photo profile berhasil diupload"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading photo for user {UserId}", userId);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = ex.Message,
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
+        }
+
+        /// <summary>
+        /// Delete photo profile user
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <returns>Status deletion</returns>
+        [HttpDelete("{userId}/photo")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> DeleteUserPhoto(int userId)
+        {
+            try
+            {
+                // Check if user can delete their own photo or has permission to update others
+                var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var canUpdateOthers = User.HasClaim("Permission", "user.update");
+
+                if (userId.ToString() != currentUserId && !canUpdateOthers)
+                {
+                    return Forbid();
+                }
+
+                // Get existing user
+                var user = await _userService.GetUserEntityByIdAsync(userId);
+                if (user == null)
+                {
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                // Check if user has photo
+                if (string.IsNullOrEmpty(user.PhotoUrl))
+                {
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "User tidak memiliki photo",
+                        data = new { },
+                        meta = (object?)null
+                    });
+                }
+
+                // Delete photo from Cloudinary
+                var publicId = _cloudinaryService.GetPublicIdFromUrl(user.PhotoUrl);
+                if (!string.IsNullOrEmpty(publicId))
+                {
+                    await _cloudinaryService.DeleteImageAsync(publicId);
+                }
+
+                // Remove photo URL from user
+                var updated = await _userService.UpdateUserPhotoAsync(userId, null);
+                if (!updated)
+                {
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Gagal hapus photo",
+                        data = new { message = "Gagal menghapus photo dari database" },
                         meta = (object?)null
                     });
                 }
@@ -301,14 +518,14 @@ namespace Pm.Controllers
                 return Ok(new
                 {
                     statusCode = 200,
-                    message = "Permission berhasil dihapus",
+                    message = "Photo profile berhasil dihapus",
                     data = new { },
                     meta = (object?)null
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting permission: {PermissionId}", permissionId);
+                _logger.LogError(ex, "Error deleting photo for user {UserId}", userId);
                 return BadRequest(new
                 {
                     statusCode = StatusCodes.Status400BadRequest,

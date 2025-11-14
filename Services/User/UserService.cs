@@ -6,8 +6,6 @@ using Pm.Models;
 
 namespace Pm.Services
 {
-
-
     public class UserService : IUserService
     {
         private readonly AppDbContext _context;
@@ -66,20 +64,22 @@ namespace Pm.Services
         {
             var user = await _context.Users
                 .Include(u => u.Role)
-                    .ThenInclude(r => r!.RolePermissions)
-                    .ThenInclude(rp => rp.Permission)
                 .FirstOrDefaultAsync(u => u.UserId == userId);
 
             if (user == null) return null;
 
             var dto = MapToDto(user);
 
-            // Add permissions
-            if (user.Role?.RolePermissions != null)
+            // Add permissions from role
+            if (user.RoleId > 0)
             {
-                dto.Permissions = user.Role.RolePermissions
+                var permissions = await _context.RolePermissions
+                    .Where(rp => rp.RoleId == user.RoleId)
+                    .Include(rp => rp.Permission)
                     .Select(rp => rp.Permission.PermissionName)
-                    .ToList();
+                    .ToListAsync();
+
+                dto.Permissions = permissions;
             }
 
             return dto;
@@ -126,7 +126,7 @@ namespace Pm.Services
                 FullName = dto.FullName,
                 Email = dto.Email,
                 RoleId = dto.RoleId ?? 3, // Default to User role (RoleId = 3)
-                IsActive = true,
+                IsActive = false,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -253,12 +253,50 @@ namespace Pm.Services
             return await query.AnyAsync();
         }
 
+        public async Task<bool> UpdateUserPhotoAsync(int userId, string? photoUrl)
+        {
+
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("User not found for photo update: {UserId}", userId);
+                return false;
+            }
+
+
+
+            user.PhotoUrl = photoUrl;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            try
+            {
+                // PASTIKAN INI ADA!
+                _context.Users.Update(user); // atau _context.Entry(user).State = EntityState.Modified;
+                var saved = await _context.SaveChangesAsync();
+
+                if (saved > 0)
+                {
+                    _logger.LogInformation("User photo updated successfully: {UserId}, PhotoUrl: {PhotoUrl}", userId, photoUrl);
+                    return true;
+                }
+                else
+                {
+                    _logger.LogError("SaveChanges returned 0 rows affected for user {UserId}", userId);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user photo in database: {UserId}", userId);
+                return false;
+            }
+        }
+
         public async Task<bool> RoleExistsAsync(int roleId)
         {
             return await _context.Roles.AnyAsync(r => r.RoleId == roleId && r.IsActive);
         }
-
-
 
         private IQueryable<User> ApplySorting(IQueryable<User> query, string? sortBy, string? sortDir)
         {
@@ -285,12 +323,14 @@ namespace Pm.Services
                 Username = user.Username,
                 FullName = user.FullName,
                 Email = user.Email,
+                PhotoUrl = user.PhotoUrl,
                 IsActive = user.IsActive,
                 RoleId = user.RoleId,
                 RoleName = user.Role?.RoleName,
                 LastLogin = user.LastLogin,
-                LastLoginText = user.LastLogin?.ToString("dd MMM yyyy HH:mm"),
+                LastLoginText = user.LastLogin?.ToString("dd MMM yyyy HH:mm") ?? "Belum pernah login",
                 CreatedAt = user.CreatedAt,
+                CreatedAtText = user.CreatedAt.ToString("dd MMM yyyy HH:mm"),
                 Permissions = new List<string>()
             };
         }

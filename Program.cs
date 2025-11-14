@@ -12,6 +12,7 @@ using Pm.DTOs;
 using Pm.Validators;
 using OfficeOpenXml;
 using Microsoft.AspNetCore.Http.Features;
+using Pm.DTOs.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -111,10 +112,23 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 // Role & Permission Services
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
 
 // Call Record Services
 builder.Services.AddScoped<ICallRecordService, CallRecordService>();
 builder.Services.AddScoped<IExcelExportService, ExcelExportService>();
+
+builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();
+builder.Services.AddScoped<IValidator<RegisterDto>, RegisterDtoValidator>();
+
+// Cloudinary Service
+builder.Services.Configure<CloudinarySettings>(options =>
+{
+    options.CloudName = builder.Configuration["Cloudinary:CloudName"] ?? "dz3rhkitn";
+    options.ApiKey = builder.Configuration["Cloudinary:ApiKey"] ?? "565287517278285";
+    options.ApiSecret = builder.Configuration["Cloudinary:ApiSecret"] ?? "VB7L7av5BE-Fi6bmyxWJziW2a5M";
+});
+builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
 // ===== Fluent Validation =====
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();
@@ -197,18 +211,24 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
     try
     {
+        // Ensure database is created
         context.Database.EnsureCreated();
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("Database initialized successfully.");
+        logger.LogInformation("✅ Database initialized successfully.");
+
+        // Seed initial data (Roles, Permissions, Super Admin)
+        await context.SeedInitialDataAsync(logger);
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while initializing the database.");
+        logger.LogError(ex, "❌ An error occurred while initializing the database.");
         throw;
     }
 }
+
+
 
 app.Run();

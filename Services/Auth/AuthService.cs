@@ -51,7 +51,9 @@ namespace Pm.Services
             var expiresIn = _jwtService.GetTokenExpirationTime();
 
             // Update last login
-            await UpdateLastLoginAsync(user.UserId);
+            user.LastLogin = DateTime.UtcNow;
+            _context.Entry(user).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
 
             _logger.LogInformation("Login successful for user {Username}", dto.Username);
 
@@ -65,6 +67,7 @@ namespace Pm.Services
                     Username = user.Username,
                     FullName = user.FullName,
                     Email = user.Email,
+                    PhotoUrl = user.PhotoUrl,
                     IsActive = user.IsActive,
                     RoleId = user.RoleId,
                     RoleName = user.Role?.RoleName,

@@ -189,3 +189,14 @@ D:\C#\PM\Pm\obj\Debug\net8.0\refint\Pm.dll
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.pdb
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.genruntimeconfig.cache
 D:\C#\PM\Pm\obj\Debug\net8.0\ref\Pm.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\ClosedXML.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\ClosedXML.Parser.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\DocumentFormat.OpenXml.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\DocumentFormat.OpenXml.Framework.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\ExcelNumberFormat.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\RBush.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\SixLabors.Fonts.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\System.IO.Packaging.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\BouncyCastle.Cryptography.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\MailKit.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\MimeKit.dll

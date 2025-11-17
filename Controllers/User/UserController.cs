@@ -141,17 +141,16 @@ namespace Pm.Controllers
         }
 
         /// <summary>
-        /// Activate atau deactivate user (Super Admin / Admin only)
+        /// ✅ ACTIVATE USER - Set isActive to TRUE
         /// </summary>
         /// <param name="userId">User ID</param>
-        /// <param name="dto">Activation status</param>
         /// <returns>Updated user</returns>
         [Authorize(Policy = "CanUpdateUsers")]
         [HttpPatch("{userId}/activate")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> ActivateUser(int userId, [FromBody] ActivateUserDto dto)
+        public async Task<IActionResult> ActivateUser(int userId)
         {
             var user = await _userService.GetUserEntityByIdAsync(userId);
             if (user == null)
@@ -167,7 +166,7 @@ namespace Pm.Controllers
 
             var updateDto = new UpdateUserDto
             {
-                IsActive = dto.IsActive
+                IsActive = true
             };
 
             try
@@ -185,14 +184,149 @@ namespace Pm.Controllers
                 }
 
                 var updatedUser = await _userService.GetUserByIdAsync(userId);
-                var message = dto.IsActive ? "User berhasil diaktivasi" : "User berhasil dinonaktifkan";
 
-                HttpContext.Items["message"] = message;
+                HttpContext.Items["message"] = "User berhasil diaktifkan";
                 return Ok(updatedUser);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error activating/deactivating user {UserId}", userId);
+                _logger.LogError(ex, "Error activating user {UserId}", userId);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = ex.Message,
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
+        }
+
+        /// <summary>
+        /// ✅ DEACTIVATE USER - Set isActive to FALSE
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <returns>Updated user</returns>
+        [Authorize(Policy = "CanUpdateUsers")]
+        [HttpPatch("{userId}/deactivate")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> DeactivateUser(int userId)
+        {
+            var user = await _userService.GetUserEntityByIdAsync(userId);
+            if (user == null)
+            {
+                return NotFound(new
+                {
+                    statusCode = 404,
+                    message = "Not Found",
+                    data = new { message = "User tidak ditemukan" },
+                    meta = (object?)null
+                });
+            }
+
+            var updateDto = new UpdateUserDto
+            {
+                IsActive = false
+            };
+
+            try
+            {
+                var updated = await _userService.UpdateUserAsync(userId, updateDto);
+                if (!updated)
+                {
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                var updatedUser = await _userService.GetUserByIdAsync(userId);
+
+                HttpContext.Items["message"] = "User berhasil dinonaktifkan";
+                return Ok(updatedUser);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deactivating user {UserId}", userId);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = ex.Message,
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
+        }
+
+        /// <summary>
+        /// ✅ UPDATE ROLE - Change user's role
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <param name="dto">New role data</param>
+        /// <returns>Updated user</returns>
+        [Authorize(Policy = "CanUpdateUsers")]
+        [HttpPatch("{userId}/role")]
+        [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> UpdateUserRole(int userId, [FromBody] UpdateUserDto dto)
+        {
+            var user = await _userService.GetUserEntityByIdAsync(userId);
+            if (user == null)
+            {
+                return NotFound(new
+                {
+                    statusCode = 404,
+                    message = "Not Found",
+                    data = new { message = "User tidak ditemukan" },
+                    meta = (object?)null
+                });
+            }
+
+            // Check if role exists
+            var roleExists = await _userService.RoleExistsAsync(dto.RoleId ?? 0);
+            if (!roleExists)
+            {
+                return BadRequest(new
+                {
+                    statusCode = 400,
+                    message = "Bad Request",
+                    data = new { message = "Role tidak ditemukan atau tidak aktif" },
+                    meta = (object?)null
+                });
+            }
+
+            var updateDto = new UpdateUserDto
+            {
+                RoleId = dto.RoleId
+            };
+
+            try
+            {
+                var updated = await _userService.UpdateUserAsync(userId, updateDto);
+                if (!updated)
+                {
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                var updatedUser = await _userService.GetUserByIdAsync(userId);
+
+                HttpContext.Items["message"] = "Role user berhasil diperbarui";
+                return Ok(updatedUser);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user role {UserId}", userId);
                 return BadRequest(new
                 {
                     statusCode = StatusCodes.Status400BadRequest,
@@ -320,25 +454,39 @@ namespace Pm.Controllers
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> DeleteUser(int userId)
         {
-            var deleted = await _userService.DeleteUserAsync(userId);
-            if (!deleted)
+            try
             {
-                return NotFound(new
+                var deleted = await _userService.DeleteUserAsync(userId);
+                if (!deleted)
                 {
-                    statusCode = 404,
-                    message = "Not Found",
-                    data = new { message = "User tidak ditemukan" },
+                    return NotFound(new
+                    {
+                        statusCode = 404,
+                        message = "Not Found",
+                        data = new { message = "User tidak ditemukan" },
+                        meta = (object?)null
+                    });
+                }
+
+                return Ok(new
+                {
+                    statusCode = 200,
+                    message = "Success",
+                    data = new { message = "User berhasil dihapus" },
                     meta = (object?)null
                 });
             }
-
-            return Ok(new
+            catch (Exception ex)
             {
-                statusCode = 200,
-                message = "Success",
-                data = new { message = "User berhasil dihapus" },
-                meta = (object?)null
-            });
+                _logger.LogError(ex, "Error deleting user {UserId}", userId);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = ex.Message,
+                    data = new { },
+                    meta = (object?)null
+                });
+            }
         }
 
         /// <summary>

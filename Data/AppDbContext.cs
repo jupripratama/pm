@@ -17,7 +17,8 @@ namespace Pm.Data
         public DbSet<CallSummary> CallSummaries { get; set; }
         public DbSet<FleetStatistic> FleetStatistics { get; set; }
         public DbSet<FileImportHistory> FileImportHistories { get; set; }
-
+        public DbSet<InspeksiTemuanKpc> InspeksiTemuanKpcs { get; set; } = null!;
+        public DbSet<ActivityLog> ActivityLogs { get; set; } = null!;
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {

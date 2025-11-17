@@ -133,6 +133,15 @@ builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 // ===== Fluent Validation =====
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();
 
+// Inspeksi Temuan KPC Service
+builder.Services.AddScoped<IInspeksiTemuanKpcService, InspeksiTemuanKpcService>();
+builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
+
+// Email Service
+builder.Services.AddScoped<IEmailService, EmailService>();
+
+builder.Services.AddHttpContextAccessor();
+
 // ===== CORS =====
 builder.Services.AddCors(options =>
 {

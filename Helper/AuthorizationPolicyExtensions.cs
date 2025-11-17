@@ -10,7 +10,7 @@ namespace Pm.Helper
             options.AddPolicy("CanViewPermissions", policy =>
                 policy.RequireClaim("Permission", "permission.view"));
 
-            options.AddPolicy("CanEditPermission", policy =>
+            options.AddPolicy("CanEditPermissions", policy =>
                 policy.RequireClaim("Permission", "permission.edit"));
 
             // Role policies
@@ -78,6 +78,19 @@ namespace Pm.Helper
 
             options.AddPolicy("CanManageRoles", policy =>
                 policy.RequireClaim("Permission", "manage.role.create", "manage.role.update", "manage.role.delete"));
+
+
+            options.AddPolicy("InspeksiTemuanKpcView", policy =>
+                policy.RequireClaim("Permission", "inspeksi.temuan-kpc.view"));
+
+            options.AddPolicy("InspeksiTemuanKpcCreate", policy =>
+                policy.RequireClaim("Permission", "inspeksi.temuan-kpc.create"));
+
+            options.AddPolicy("InspeksiTemuanDelete", policy =>
+                policy.RequireClaim("Permission", "inspeksi.temuan-kpc.delete"));
+
+            options.AddPolicy("InspeksiTemuanRestore", policy =>
+                policy.RequireClaim("Permission", "inspeksi.temuan-kpc.restore"));
         }
 
 

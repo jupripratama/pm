@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Pm.Data;
 
@@ -11,9 +12,11 @@ using Pm.Data;
 namespace Pm.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251117033322_CreateInspeksiTemuanKpcTable")]
+    partial class CreateInspeksiTemuanKpcTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -247,10 +250,6 @@ namespace Pm.Migrations
                     b.Property<string>("FotoTemuanUrls")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Inspector")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
@@ -286,9 +285,6 @@ namespace Pm.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("TanggalPerbaikan")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("TanggalSelesaiPerbaikan")
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("TanggalTargetSelesai")

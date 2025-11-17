@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Pm.Data;
 using Pm.DTOs;
@@ -10,11 +12,27 @@ namespace Pm.Services
     {
         private readonly AppDbContext _context;
         private readonly ILogger<RolePermissionService> _logger;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public RolePermissionService(AppDbContext context, ILogger<RolePermissionService> logger)
+        public RolePermissionService(
+            AppDbContext context,
+            ILogger<RolePermissionService> logger,
+            IHttpContextAccessor httpContextAccessor)
         {
             _context = context;
             _logger = logger;
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        private bool IsCurrentUserSuperAdmin()
+        {
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null || !user.Identity?.IsAuthenticated == true)
+                return false;
+
+            return user.IsInRole("Super Admin") ||
+                   user.HasClaim(c => c.Type == "role" && c.Value.Equals("Super Admin", StringComparison.OrdinalIgnoreCase)) ||
+                   user.HasClaim(ClaimTypes.Role, "Super Admin");
         }
 
         public async Task<List<RolePermissionDto>> GetAllRolePermissionsAsync()
@@ -125,34 +143,21 @@ namespace Pm.Services
 
         public async Task<RolePermissionDto?> AddPermissionToRoleAsync(CreateRolePermissionDto dto)
         {
-            // Prevent modifying Super Admin permissions
             if (dto.RoleId == 1)
             {
-                throw new Exception("Tidak dapat mengubah permissions untuk Super Admin");
+                if (!IsCurrentUserSuperAdmin())
+                    throw new UnauthorizedAccessException("Hanya Super Admin yang dapat mengubah permissions role Super Admin");
             }
 
-            // Check if role exists
             var roleExists = await _context.Roles.AnyAsync(r => r.RoleId == dto.RoleId);
-            if (!roleExists)
-            {
-                throw new Exception("Role tidak ditemukan");
-            }
+            if (!roleExists) throw new Exception("Role tidak ditemukan");
 
-            // Check if permission exists
             var permission = await _context.Permissions.FindAsync(dto.PermissionId);
-            if (permission == null)
-            {
-                throw new Exception("Permission tidak ditemukan");
-            }
+            if (permission == null) throw new Exception("Permission tidak ditemukan");
 
-            // Check if already exists
             var existing = await _context.RolePermissions
                 .AnyAsync(rp => rp.RoleId == dto.RoleId && rp.PermissionId == dto.PermissionId);
-
-            if (existing)
-            {
-                return null; // Already exists
-            }
+            if (existing) return null;
 
             var rolePermission = new RolePermission
             {
@@ -164,15 +169,8 @@ namespace Pm.Services
             _context.RolePermissions.Add(rolePermission);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Permission {PermissionId} added to Role {RoleId}", dto.PermissionId, dto.RoleId);
-
-            // Load related data for response
-            await _context.Entry(rolePermission)
-                .Reference(rp => rp.Role)
-                .LoadAsync();
-            await _context.Entry(rolePermission)
-                .Reference(rp => rp.Permission)
-                .LoadAsync();
+            await _context.Entry(rolePermission).Reference(rp => rp.Role).LoadAsync();
+            await _context.Entry(rolePermission).Reference(rp => rp.Permission).LoadAsync();
 
             return new RolePermissionDto
             {
@@ -188,86 +186,71 @@ namespace Pm.Services
 
         public async Task<RolePermissionDetailDto?> UpdateRolePermissionsAsync(int roleId, List<int> permissionIds)
         {
-            // Prevent modifying Super Admin permissions
+            // INI YANG BENAR — HANYA CEK KALAU roleId == 1
             if (roleId == 1)
             {
-                throw new Exception("Tidak dapat mengubah permissions untuk Super Admin");
+                if (!IsCurrentUserSuperAdmin())
+                    throw new UnauthorizedAccessException("Hanya Super Admin yang dapat mengubah permissions role Super Admin");
             }
 
             var role = await _context.Roles
                 .Include(r => r.RolePermissions)
                 .FirstOrDefaultAsync(r => r.RoleId == roleId);
 
-            if (role == null)
-            {
-                return null;
-            }
+            if (role == null) return null;
 
-            // Validate all permission IDs exist
-            var existingPermissionIds = await _context.Permissions
+            // Validasi semua permission ID valid
+            var existingIds = await _context.Permissions
                 .Where(p => permissionIds.Contains(p.PermissionId))
                 .Select(p => p.PermissionId)
                 .ToListAsync();
 
-            if (existingPermissionIds.Count != permissionIds.Count)
+            if (existingIds.Count != permissionIds.Count)
             {
-                throw new Exception("Satu atau lebih Permission ID tidak valid");
+                var invalid = permissionIds.Except(existingIds).ToList();
+                throw new Exception($"Permission tidak valid: {string.Join(", ", invalid)}");
             }
 
-            // Begin transaction
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // Remove existing role permissions
                 _context.RolePermissions.RemoveRange(role.RolePermissions);
                 await _context.SaveChangesAsync();
 
-                // Add new role permissions
-                var newRolePermissions = permissionIds.Select(permissionId => new RolePermission
+                var newPermissions = permissionIds.Select(pid => new RolePermission
                 {
                     RoleId = roleId,
-                    PermissionId = permissionId,
+                    PermissionId = pid,
                     CreatedAt = DateTime.UtcNow
-                });
+                }).ToList();
 
-                await _context.RolePermissions.AddRangeAsync(newRolePermissions);
+                await _context.RolePermissions.AddRangeAsync(newPermissions);
                 await _context.SaveChangesAsync();
-
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Permissions updated successfully for Role: {RoleId}", roleId);
-
-                // Return updated permissions
                 return await GetPermissionsByRoleAsync(roleId);
             }
-            catch (Exception ex)
+            catch
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error updating permissions for Role: {RoleId}", roleId);
                 throw;
             }
         }
-
         public async Task<bool> RemovePermissionFromRoleAsync(int roleId, int permissionId)
         {
-            // Prevent modifying Super Admin permissions
             if (roleId == 1)
             {
-                throw new Exception("Tidak dapat mengubah permissions untuk Super Admin");
+                if (!IsCurrentUserSuperAdmin())
+                    throw new UnauthorizedAccessException("Hanya Super Admin yang dapat mengubah permissions role Super Admin");
             }
 
-            var rolePermission = await _context.RolePermissions
-                .FirstOrDefaultAsync(rp => rp.RoleId == roleId && rp.PermissionId == permissionId);
+            var rp = await _context.RolePermissions
+                .FirstOrDefaultAsync(x => x.RoleId == roleId && x.PermissionId == permissionId);
 
-            if (rolePermission == null)
-            {
-                return false;
-            }
+            if (rp == null) return false;
 
-            _context.RolePermissions.Remove(rolePermission);
+            _context.RolePermissions.Remove(rp);
             await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Permission {PermissionId} removed from Role {RoleId}", permissionId, roleId);
             return true;
         }
 

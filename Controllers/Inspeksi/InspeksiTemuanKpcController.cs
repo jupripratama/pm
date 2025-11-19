@@ -1,9 +1,12 @@
 // Controllers/InspeksiTemuanKpcController.cs - UPDATE POLICIES
+using System;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Pm.DTOs;
 using Pm.Services;
 using System.Security.Claims;
+using Pm.DTOs.Common;
 
 namespace Pm.Controllers
 {
@@ -13,12 +16,18 @@ namespace Pm.Controllers
     {
         private readonly IInspeksiTemuanKpcService _service;
         private readonly IEmailService _emailService;
+        private readonly ILogger<InspeksiTemuanKpcController> _logger;
         private readonly int _userId;
 
-        public InspeksiTemuanKpcController(IInspeksiTemuanKpcService service, IEmailService emailService, IHttpContextAccessor http)
+        public InspeksiTemuanKpcController(
+            IInspeksiTemuanKpcService service,
+            IEmailService emailService,
+            IHttpContextAccessor http,
+            ILogger<InspeksiTemuanKpcController> logger)
         {
             _service = service;
             _emailService = emailService;
+            _logger = logger;
             _userId = int.Parse(http.HttpContext!.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         }
 
@@ -27,6 +36,8 @@ namespace Pm.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] InspeksiTemuanKpcQueryDto query)
         {
+            // ✅ SELALU set IncludeDeleted = false untuk active data
+            query.IncludeDeleted = false;
             var result = await _service.GetAllAsync(query);
             return Ok(result);
         }
@@ -46,16 +57,39 @@ namespace Pm.Controllers
         [HttpGet("history")]
         public async Task<IActionResult> GetHistory([FromQuery] InspeksiTemuanKpcQueryDto query)
         {
+            // ✅ SET IncludeDeleted = true UNTUK MENDAPATKAN DATA DELETED
             query.IncludeDeleted = true;
             var result = await _service.GetAllAsync(query);
-            return Ok(result);
-        }
 
+            // ✅ DEBUG: Log hasil sebelum dan sesudah filter
+            _logger.LogInformation("📊 HISTORY DEBUG - Total from service: {Total}, Data count: {DataCount}",
+                result.TotalCount, result.Data.Count);
+
+            // ✅ FILTER MANUAL: Hanya kembalikan data yang Status = "Archived"
+            var deletedItems = result.Data.Where(x => x.Status == "Archived").ToList();
+
+            _logger.LogInformation("📊 HISTORY DEBUG - After filter: {FilteredCount}", deletedItems.Count);
+
+            // ✅ DEBUG: List ID yang termasuk deleted
+            foreach (var item in deletedItems)
+            {
+                _logger.LogInformation("📋 Deleted Item - ID: {Id}, Status: {Status}", item.Id, item.Status);
+            }
+
+            return Ok(new PagedResultDto<InspeksiTemuanKpcDto>(
+                deletedItems,
+                query,
+                deletedItems.Count
+            ));
+        }
         // POST: api/inspeksi-temuan-kpc
         [Authorize(Policy = "InspeksiTemuanKpcCreate")]
         [HttpPost]
         public async Task<IActionResult> Create([FromForm] CreateInspeksiTemuanKpcDto dto)
         {
+            _logger.LogInformation("🔄 Create request for room: {Ruang}", dto.Ruang);
+            _logger.LogInformation("📁 Files received: {Count}", dto.FotoTemuanFiles?.Count ?? 0);
+
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var id = await _service.CreateAsync(dto, _userId);
@@ -74,8 +108,7 @@ namespace Pm.Controllers
                 }
                 catch (Exception ex)
                 {
-                    // Log error tapi jangan fail request
-                    Console.WriteLine($"Email send failed: {ex.Message}");
+                    _logger.LogWarning("⚠️ Email send failed: {Message}", ex.Message);
                 }
             }
 
@@ -87,31 +120,39 @@ namespace Pm.Controllers
         [HttpPatch("{id}")]
         public async Task<IActionResult> Update(int id, [FromForm] UpdateInspeksiTemuanKpcDto dto)
         {
-            var success = await _service.UpdateAsync(id, dto, _userId);
-            if (!success) return NotFound("Data tidak ditemukan atau sudah dihapus");
+            _logger.LogInformation("🔄 Update request for ID: {Id}", id);
+            _logger.LogInformation("📁 Files received: {Count}", dto.FotoHasilFiles?.Count ?? 0);
+
+            // ✅ SERVICE RETURN DTO LANGSUNG
+            var updatedDto = await _service.UpdateAsync(id, dto, _userId);
+            if (updatedDto == null) return NotFound("Data tidak ditemukan atau sudah dihapus");
 
             // Kirim email kalau status jadi "Closed" (opsional)
             if (dto.Status?.Equals("Closed", StringComparison.OrdinalIgnoreCase) == true)
             {
-                var entity = await _service.GetByIdAsync(id);
-                if (entity != null && !string.IsNullOrEmpty(dto.PicPelaksana))
+                if (!string.IsNullOrEmpty(dto.PicPelaksana))
                 {
                     try
                     {
                         await _emailService.SendStatusClosedEmailAsync(
                             temuanId: id,
-                            ruang: entity.Ruang,
+                            ruang: updatedDto.Ruang,
                             picEmail: dto.PicPelaksana
                         );
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Email send failed: {ex.Message}");
+                        _logger.LogWarning("⚠️ Email send failed: {Message}", ex.Message);
                     }
                 }
             }
 
-            return Ok(new { message = "Temuan berhasil diperbarui" });
+            // ✅ RETURN RESPONSE YANG CONSISTENT
+            return Ok(new
+            {
+                message = "Temuan berhasil diperbarui",
+                data = updatedDto
+            });
         }
 
         // DELETE: api/inspeksi-temuan-kpc/5

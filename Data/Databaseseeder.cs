@@ -54,7 +54,8 @@ namespace Pm.Helper
                         // Permission Management
                         new Permission { PermissionId = 11, PermissionName = "permission.view", Description = "View permissions", Group = "Permission", CreatedAt = DateTime.UtcNow },
                         new Permission { PermissionId = 12, PermissionName = "permission.edit", Description = "Create, update, and delete permissions", Group = "Permission", CreatedAt = DateTime.UtcNow },
-                        
+                        new Permission { PermissionId = 23, PermissionName = "permission.create", Description = "Create new permissions", Group = "Permission", CreatedAt = DateTime.UtcNow },
+
                         // Call Record Management
                         new Permission { PermissionId = 13, PermissionName = "callrecord.import", Description = "Import call records from CSV", Group = "CallRecord", CreatedAt = DateTime.UtcNow },
                         new Permission { PermissionId = 14, PermissionName = "callrecord.view-any", Description = "View all call records", Group = "CallRecord", CreatedAt = DateTime.UtcNow },

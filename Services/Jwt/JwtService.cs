@@ -31,6 +31,7 @@ namespace Pm.Services
                 new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
                 new(ClaimTypes.Name, user.Username),
                 new(ClaimTypes.Email, user.Email ?? ""),
+                new(ClaimTypes.Role, user.Role?.RoleName ?? ""),
                 new("FullName", user.FullName),
                 new("RoleId", user.RoleId.ToString()),
                 new("RoleName", user.Role?.RoleName ?? "")

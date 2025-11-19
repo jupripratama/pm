@@ -67,6 +67,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         throw new InvalidOperationException("Connection string 'DefaultConnection' tidak ditemukan. Pastikan sudah diatur di Render Environment Variables.");
     }
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+
+    // ✅ ENABLE DETAILED ERROR & SENSITIVE DATA LOGGING (untuk development)
+    options.EnableSensitiveDataLogging();
+    options.EnableDetailedErrors();
+
 });
 
 // ===== JWT Authentication =====
@@ -108,6 +113,11 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+
+// Validators
+builder.Services.AddScoped<IValidator<RegisterDto>, RegisterDtoValidator>();
+builder.Services.AddScoped<IValidator<CreateUserDto>, CreateUserDtoValidator>();
+builder.Services.AddScoped<IValidator<UpdateUserDto>, UpdateUserDtoValidator>();
 
 // Role & Permission Services
 builder.Services.AddScoped<IRoleService, RoleService>();

@@ -28,11 +28,24 @@ namespace Pm.Services
         {
             var user = _httpContextAccessor.HttpContext?.User;
             if (user == null || !user.Identity?.IsAuthenticated == true)
+            {
+                _logger.LogWarning("User tidak terautentikasi");
                 return false;
+            }
 
-            return user.IsInRole("Super Admin") ||
-                   user.HasClaim(c => c.Type == "role" && c.Value.Equals("Super Admin", StringComparison.OrdinalIgnoreCase)) ||
-                   user.HasClaim(ClaimTypes.Role, "Super Admin");
+            // Log semua claims untuk debug
+            _logger.LogInformation("=== Debug Claims ===");
+            foreach (var claim in user.Claims)
+            {
+                _logger.LogInformation("Claim: {Type} = {Value}", claim.Type, claim.Value);
+            }
+
+            var roleId = user.FindFirst("RoleId")?.Value;
+            var roleName = user.FindFirst("RoleName")?.Value;
+
+            _logger.LogInformation("RoleId: {RoleId}, RoleName: {RoleName}", roleId, roleName);
+
+            return roleId == "1" || roleName == "Super Admin";
         }
 
         public async Task<List<RolePermissionDto>> GetAllRolePermissionsAsync()

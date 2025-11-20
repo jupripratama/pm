@@ -8,7 +8,12 @@ D:\C#\PM\Pm\bin\Debug\net8.0\Pm.pdb
 D:\C#\PM\Pm\bin\Debug\net8.0\Azure.Core.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Azure.Identity.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\BCrypt.Net-Next.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\BouncyCastle.Cryptography.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\ClosedXML.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\ClosedXML.Parser.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\CloudinaryDotNet.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\DocumentFormat.OpenXml.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\DocumentFormat.OpenXml.Framework.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.Core.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.MySql.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.PostgreSql.dll
@@ -16,9 +21,11 @@ D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.Sqlite.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EFCore.BulkExtensions.SqlServer.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EPPlus.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\EPPlus.Interfaces.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\ExcelNumberFormat.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\FluentValidation.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\FluentValidation.DependencyInjectionExtensions.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Humanizer.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\MailKit.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\MedallionTopologicalSort.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Microsoft.AspNetCore.OpenApi.dll
@@ -58,6 +65,7 @@ D:\C#\PM\Pm\bin\Debug\net8.0\Microsoft.IO.RecyclableMemoryStream.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Microsoft.OpenApi.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Microsoft.SqlServer.Server.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Microsoft.SqlServer.Types.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\MimeKit.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Mono.TextTemplating.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\MySqlConnector.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\NetTopologySuite.dll
@@ -67,6 +75,8 @@ D:\C#\PM\Pm\bin\Debug\net8.0\Newtonsoft.Json.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Npgsql.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Pomelo.EntityFrameworkCore.MySql.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\RBush.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\SixLabors.Fonts.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\SQLitePCLRaw.core.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Swashbuckle.AspNetCore.Swagger.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\Swashbuckle.AspNetCore.SwaggerGen.dll
@@ -80,6 +90,7 @@ D:\C#\PM\Pm\bin\Debug\net8.0\System.Composition.Runtime.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\System.Composition.TypedParts.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\System.Configuration.ConfigurationManager.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
+D:\C#\PM\Pm\bin\Debug\net8.0\System.IO.Packaging.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\System.Memory.Data.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\System.Runtime.Caching.dll
 D:\C#\PM\Pm\bin\Debug\net8.0\System.Security.Cryptography.Pkcs.dll

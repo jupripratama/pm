@@ -69,7 +69,6 @@ namespace Pm.Controllers
         /// Add single permission to role
         /// </summary>
         /// <param name="dto">Role and Permission IDs</param>
-        /// <returns>Created role permission</returns>
         [Authorize(Policy = "CanEditPermissions")]
         [HttpPost]
         [ProducesResponseType(typeof(RolePermissionDto), StatusCodes.Status201Created)]
@@ -246,15 +245,36 @@ namespace Pm.Controllers
         /// Get permission matrix (all roles with their permissions)
         /// </summary>
         /// <returns>Matrix of all roles and their permissions</returns>
+        // Controllers/RolePermissionController.cs - UPDATE
         [Authorize(Policy = "CanViewPermissions")]
         [HttpGet("matrix")]
-        [ProducesResponseType(typeof(List<RolePermissionMatrixDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> GetPermissionMatrix()
         {
-            var matrix = await _rolePermissionService.GetPermissionMatrixAsync();
-            HttpContext.Items["message"] = "Permission matrix berhasil dimuat";
-            return Ok(matrix);
+            try
+            {
+                _logger.LogInformation("📊 Fetching permission matrix...");
+                var matrix = await _rolePermissionService.GetPermissionMatrixAsync();
+                _logger.LogInformation($"✅ Matrix loaded: {matrix.Count} roles");
+
+                return Ok(new
+                {
+                    statusCode = 200,
+                    message = "Permission matrix berhasil dimuat",
+                    data = matrix,
+                    meta = (object?)null
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error getting permission matrix");
+                return StatusCode(500, new
+                {
+                    statusCode = 500,
+                    message = "Terjadi kesalahan internal server",
+                    data = new { error = ex.Message, stackTrace = ex.StackTrace },
+                    meta = (object?)null
+                });
+            }
         }
     }
 }

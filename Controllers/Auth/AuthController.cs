@@ -1,3 +1,4 @@
+// Controllers/AuthController.cs - FIXED REGISTER ENDPOINT
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -33,50 +34,89 @@ namespace Pm.Controllers
         /// <summary>
         /// Register user baru (IsActive = false, perlu aktivasi dari Super Admin)
         /// </summary>
-        /// <param name="dto">Register data</param>
-        /// <returns>Created user</returns>
         [HttpPost("register")]
         [ProducesResponseType(typeof(UserDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
-            // Validasi menggunakan FluentValidation
-            var validationResult = await _registerValidator.ValidateAsync(dto);
-            if (!validationResult.IsValid)
-            {
-                foreach (var error in validationResult.Errors)
-                {
-                    ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
-                }
-            }
-
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
             try
             {
+                _logger.LogInformation("📝 Register attempt - Username: {Username}, Email: {Email}",
+                    dto.Username, dto.Email);
+
+                // ✅ VALIDASI MENGGUNAKAN FLUENTVALIDATION
+                var validationResult = await _registerValidator.ValidateAsync(dto);
+                if (!validationResult.IsValid)
+                {
+                    _logger.LogWarning("❌ Validation failed for registration");
+
+                    var errors = validationResult.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(
+                            g => g.Key,
+                            g => g.Select(e => e.ErrorMessage).ToArray()
+                        );
+
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Validation failed",
+                        data = errors,
+                        meta = (object?)null
+                    });
+                }
+
+                // ✅ CEK USERNAME DUPLICATE
+                if (await _userService.IsUsernameExistsAsync(dto.Username))
+                {
+                    _logger.LogWarning("❌ Username already exists: {Username}", dto.Username);
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Username sudah digunakan",
+                        data = new { username = new[] { "Username sudah digunakan" } },
+                        meta = (object?)null
+                    });
+                }
+
+                // ✅ CEK EMAIL DUPLICATE
+                if (await _userService.IsEmailExistsAsync(dto.Email))
+                {
+                    _logger.LogWarning("❌ Email already exists: {Email}", dto.Email);
+                    return BadRequest(new
+                    {
+                        statusCode = StatusCodes.Status400BadRequest,
+                        message = "Email sudah digunakan",
+                        data = new { email = new[] { "Email sudah digunakan" } },
+                        meta = (object?)null
+                    });
+                }
+
+                // ✅ CREATE USER
                 var createUserDto = new CreateUserDto
                 {
-                    Username = dto.Username,
+                    Username = dto.Username.Trim(),
                     Password = dto.Password,
-                    FullName = dto.FullName,
-                    Email = dto.Email,
+                    FullName = dto.FullName.Trim(),
+                    Email = dto.Email.Trim(),
                     RoleId = 3 // Default role: User
                 };
 
                 var user = await _userService.CreateUserAsync(createUserDto);
                 if (user == null)
                 {
+                    _logger.LogError("❌ Failed to create user");
                     return BadRequest(new
                     {
                         statusCode = StatusCodes.Status400BadRequest,
                         message = "Gagal membuat user",
-                        data = new { message = "Username atau email mungkin sudah digunakan" },
+                        data = new { message = "Terjadi kesalahan saat membuat user" },
                         meta = (object?)null
                     });
                 }
+
+                _logger.LogInformation("✅ User registered successfully - ID: {UserId}, Username: {Username}",
+                    user.UserId, user.Username);
 
                 return StatusCode(StatusCodes.Status201Created, new
                 {
@@ -88,7 +128,7 @@ namespace Pm.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during registration");
+                _logger.LogError(ex, "❌ Error during registration");
                 return BadRequest(new
                 {
                     statusCode = StatusCodes.Status400BadRequest,
@@ -102,8 +142,6 @@ namespace Pm.Controllers
         /// <summary>
         /// Login endpoint untuk autentikasi user
         /// </summary>
-        /// <param name="dto">Login credentials</param>
-        /// <returns>JWT token dan informasi user</returns>
         [HttpPost("login")]
         [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -140,8 +178,6 @@ namespace Pm.Controllers
         /// <summary>
         /// Change password endpoint untuk user yang sudah login
         /// </summary>
-        /// <param name="dto">Password change data</param>
-        /// <returns>Success status</returns>
         [Authorize]
         [HttpPost("change-password")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -195,9 +231,8 @@ namespace Pm.Controllers
         }
 
         /// <summary>
-        /// Get current user profile - FIXED RESPONSE STRUCTURE
+        /// Get current user profile
         /// </summary>
-        /// <returns>Current user information</returns>
         [Authorize]
         [HttpGet("profile")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -222,7 +257,6 @@ namespace Pm.Controllers
                 });
             }
 
-            // ✅ STANDARDIZED RESPONSE - sama seperti endpoint lainnya
             return Ok(new
             {
                 statusCode = 200,
@@ -235,7 +269,6 @@ namespace Pm.Controllers
         /// <summary>
         /// Logout endpoint (untuk client-side token cleanup)
         /// </summary>
-        /// <returns>Success message</returns>
         [Authorize]
         [HttpPost("logout")]
         [ProducesResponseType(StatusCodes.Status200OK)]

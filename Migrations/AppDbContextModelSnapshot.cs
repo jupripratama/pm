@@ -22,6 +22,42 @@ namespace Pm.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("Pm.Models.ActivityLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ActivityLogs");
+                });
+
             modelBuilder.Entity("Pm.Models.CallRecord", b =>
                 {
                     b.Property<int>("CallRecordId")
@@ -176,6 +212,106 @@ namespace Pm.Migrations
                     b.ToTable("FleetStatistics");
                 });
 
+            modelBuilder.Entity("Pm.Models.InspeksiTemuanKpc", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FollowUpRef")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("FotoHasilUrls")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("FotoTemuanUrls")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Inspector")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("KategoriTemuan")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Keterangan")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("NoFollowUp")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PerbaikanDilakukan")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PicPelaksana")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Ruang")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("TanggalClosed")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TanggalPerbaikan")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TanggalSelesaiPerbaikan")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TanggalTargetSelesai")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("TanggalTemuan")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Temuan")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("DeletedBy");
+
+                    b.HasIndex("UpdatedBy");
+
+                    b.ToTable("InspeksiTemuanKpcs");
+                });
+
             modelBuilder.Entity("Pm.Models.Permission", b =>
                 {
                     b.Property<int>("PermissionId")
@@ -323,6 +459,40 @@ namespace Pm.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Pm.Models.ActivityLog", b =>
+                {
+                    b.HasOne("Pm.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pm.Models.InspeksiTemuanKpc", b =>
+                {
+                    b.HasOne("Pm.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pm.Models.User", "DeletedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeletedBy");
+
+                    b.HasOne("Pm.Models.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedBy");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("DeletedByUser");
+
+                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("Pm.Models.RolePermission", b =>

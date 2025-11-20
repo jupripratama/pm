@@ -52,7 +52,6 @@ namespace Pm.Services
 
             // Update last login
             user.LastLogin = DateTime.UtcNow;
-            _context.Entry(user).State = EntityState.Modified;
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Login successful for user {Username}", dto.Username);

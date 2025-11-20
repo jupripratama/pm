@@ -17,6 +17,8 @@ namespace Pm.DTOs
         public DateTime? LastLogin { get; set; }
         public DateTime CreatedAt { get; set; }
         public List<string> Permissions { get; set; } = new();
+        public string CreatedAtFormatted => CreatedAt.ToString("dd MMM yyyy");
+        public string LastLoginFormatted => LastLogin?.ToString("dd MMM yyyy") ?? "-";
     }
 
     public class UploadPhotoDto

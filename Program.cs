@@ -67,6 +67,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         throw new InvalidOperationException("Connection string 'DefaultConnection' tidak ditemukan. Pastikan sudah diatur di Render Environment Variables.");
     }
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+
+    // ✅ ENABLE DETAILED ERROR & SENSITIVE DATA LOGGING (untuk development)
+    options.EnableSensitiveDataLogging();
+    options.EnableDetailedErrors();
+
 });
 
 // ===== JWT Authentication =====
@@ -109,6 +114,11 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 
+// Validators
+builder.Services.AddScoped<IValidator<RegisterDto>, RegisterDtoValidator>();
+builder.Services.AddScoped<IValidator<CreateUserDto>, CreateUserDtoValidator>();
+builder.Services.AddScoped<IValidator<UpdateUserDto>, UpdateUserDtoValidator>();
+
 // Role & Permission Services
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
@@ -132,6 +142,15 @@ builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
 // ===== Fluent Validation =====
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();
+
+// Inspeksi Temuan KPC Service
+builder.Services.AddScoped<IInspeksiTemuanKpcService, InspeksiTemuanKpcService>();
+builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
+
+// Email Service
+builder.Services.AddScoped<IEmailService, EmailService>();
+
+builder.Services.AddHttpContextAccessor();
 
 // ===== CORS =====
 builder.Services.AddCors(options =>

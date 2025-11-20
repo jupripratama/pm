@@ -129,7 +129,7 @@ namespace Pm.Controllers
         /// </summary>
         /// <param name="dto">Permission data</param>
         /// <returns>Created permission</returns>
-        [Authorize(Policy = "CanEditPermission")]
+        [Authorize(Policy = "CanCreatePermission")]
         [HttpPost]
         [ProducesResponseType(typeof(PermissionDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

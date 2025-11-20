@@ -1,3 +1,4 @@
+// DTOs/Common/PagedResultDto.cs
 namespace Pm.DTOs.Common
 {
     public class PagedResultDto<T>
@@ -10,12 +11,19 @@ namespace Pm.DTOs.Common
         public bool HasNext => Page < TotalPages;
         public bool HasPrevious => Page > 1;
 
+        // CONSTRUCTOR LAMA (untuk API lain)
         public PagedResultDto(List<T> data, int page, int pageSize, int totalCount)
         {
             Data = data;
             Page = page;
             PageSize = pageSize;
             TotalCount = totalCount;
+        }
+
+        // CONSTRUCTOR BARU (untuk InspeksiTemuanKpc)
+        public PagedResultDto(List<T> data, BaseQueryDto query, int totalCount)
+            : this(data, query.Page, query.PageSize, totalCount)
+        {
         }
     }
 }

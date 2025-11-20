@@ -187,7 +187,13 @@ namespace Pm.Controllers
         {
             if (!ModelState.IsValid)
             {
-                return BadRequest(ModelState);
+                return BadRequest(new
+                {
+                    statusCode = StatusCodes.Status400BadRequest,
+                    message = "Data tidak valid",
+                    data = new { },
+                    meta = (object?)null
+                });
             }
 
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -220,6 +226,7 @@ namespace Pm.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error changing password for user {UserId}", userId);
                 return BadRequest(new
                 {
                     statusCode = StatusCodes.Status400BadRequest,
@@ -229,6 +236,7 @@ namespace Pm.Controllers
                 });
             }
         }
+
 
         /// <summary>
         /// Get current user profile

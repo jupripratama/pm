@@ -68,6 +68,9 @@ namespace Pm.Services
 
             if (user == null) return null;
 
+            user.LastLogin = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
             var dto = MapToDto(user);
 
             // Add permissions from role

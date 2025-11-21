@@ -38,7 +38,16 @@ namespace Pm.Controllers
         {
             // ✅ SELALU set IncludeDeleted = false untuk active data
             query.IncludeDeleted = false;
+            
+            _logger.LogInformation("📊 GetAll request - Page: {Page}, PageSize: {PageSize}, IncludeDeleted: {IncludeDeleted}",
+                query.Page, query.PageSize, query.IncludeDeleted);
+            
             var result = await _service.GetAllAsync(query);
+            
+            // ✅ DEBUG LOG - VERIFY RESPONSE STRUCTURE
+            _logger.LogInformation("📊 GetAll response - TotalCount: {TotalCount}, DataLength: {DataLength}, Page: {Page}, TotalPages: {TotalPages}",
+                result.TotalCount, result.Data.Count, result.Page, result.TotalPages);
+            
             return Ok(result);
         }
 
@@ -123,7 +132,10 @@ namespace Pm.Controllers
             _logger.LogInformation("🔄 Update request for ID: {Id}", id);
             _logger.LogInformation("📁 Files received: {Count}", dto.FotoHasilFiles?.Count ?? 0);
 
-            // ✅ SERVICE RETURN DTO LANGSUNG
+            // ✅ DEBUG: LOG RECEIVED DATA
+            _logger.LogInformation("📊 Received DTO values - Status: {Status}, NoFollowUp: {NoFollowUp}, PicPelaksana: {PicPelaksana}, Keterangan: {Keterangan}",
+                dto.Status, dto.NoFollowUp, dto.PicPelaksana, dto.Keterangan);
+
             var updatedDto = await _service.UpdateAsync(id, dto, _userId);
             if (updatedDto == null) return NotFound("Data tidak ditemukan atau sudah dihapus");
 
@@ -147,12 +159,8 @@ namespace Pm.Controllers
                 }
             }
 
-            // ✅ RETURN RESPONSE YANG CONSISTENT
-            return Ok(new
-            {
-                message = "Temuan berhasil diperbarui",
-                data = updatedDto
-            });
+            // ✅ RETURN WITHOUT EXTRA WRAPPER - LET MIDDLEWARE HANDLE IT
+            return Ok(updatedDto);
         }
 
         // DELETE: api/inspeksi-temuan-kpc/5
@@ -163,6 +171,27 @@ namespace Pm.Controllers
             var success = await _service.DeleteAsync(id, _userId);
             if (!success) return NotFound("Data tidak ditemukan");
             return Ok(new { message = "Temuan dipindah ke history" });
+        }
+
+        [Authorize(Policy = "InspeksiTemuanKpcDelete")] // Same policy as delete
+        [HttpDelete("{id}/permanent")]
+        public async Task<IActionResult> DeletePermanent(int id)
+        {
+            try
+            {
+                var success = await _service.DeletePermanentAsync(id, _userId);
+                if (!success) return NotFound("Data tidak ditemukan atau belum dipindahkan ke history");
+                return Ok(new { message = "Temuan dihapus permanen dari database" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting permanent for ID: {Id}", id);
+                return StatusCode(500, new { message = "Terjadi kesalahan saat menghapus data permanen" });
+            }
         }
 
         // PATCH: api/inspeksi-temuan-kpc/5/restore

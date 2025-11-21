@@ -19,6 +19,11 @@ var builder = WebApplication.CreateBuilder(args);
 // ===== EPPlus License =====
 ExcelPackage.License.SetNonCommercialOrganization("MKN");
 
+// ✅ FORCE application timezone to UTC
+TimeZoneInfo.ClearCachedData();
+Environment.SetEnvironmentVariable("TZ", "UTC");
+
+
 // ===== Add Controllers =====
 builder.Services.AddControllers(options =>
 {

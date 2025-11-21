@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 public class UpdateInspeksiTemuanKpcDto
 {
     // ✅ TAMBAHKAN SEMUA FIELD YANG BISA DIUPDATE
-    public string? Ruang { get; set; }
+     public string? Ruang { get; set; }
     public string? Temuan { get; set; }
     public string? KategoriTemuan { get; set; }
     public string? Inspector { get; set; }

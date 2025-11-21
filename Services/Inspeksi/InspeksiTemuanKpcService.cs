@@ -266,54 +266,149 @@ namespace Pm.Services
                 try
                 {
                     var entity = await _context.InspeksiTemuanKpcs
-                        .AsTracking()
-                        .Include(x => x.CreatedByUser)
-                        .Include(x => x.UpdatedByUser)
-                        .FirstOrDefaultAsync(x => x.Id == id);
+                        .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
 
-                    if (entity == null || entity.IsDeleted)
+                    if (entity == null)
                     {
                         _logger.LogWarning("❌ Entity not found or deleted: {Id}", id);
                         return null;
                     }
 
-                    var oldStatus = entity.Status;
+                    // ✅ DETACH & RE-ATTACH untuk force tracking
+                    _context.Entry(entity).State = EntityState.Detached;
+                    var trackedEntity = await _context.InspeksiTemuanKpcs
+                        .AsTracking()
+                        .FirstOrDefaultAsync(x => x.Id == id);
 
-                    // ✅ UPDATE SEMUA FIELD YANG ADA
-                    if (!string.IsNullOrEmpty(dto.Ruang)) entity.Ruang = dto.Ruang.Trim();
-                    if (!string.IsNullOrEmpty(dto.Temuan)) entity.Temuan = dto.Temuan.Trim();
-                    if (dto.KategoriTemuan != null) entity.KategoriTemuan = dto.KategoriTemuan.Trim();
-                    if (dto.Inspector != null) entity.Inspector = dto.Inspector.Trim();
-                    if (!string.IsNullOrEmpty(dto.Severity)) entity.Severity = dto.Severity;
-                    if (dto.TanggalTemuan.HasValue) entity.TanggalTemuan = dto.TanggalTemuan.Value.Date;
-                    
-                    if (!string.IsNullOrEmpty(dto.NoFollowUp)) entity.NoFollowUp = dto.NoFollowUp;
-                    if (!string.IsNullOrEmpty(dto.PerbaikanDilakukan)) entity.PerbaikanDilakukan = dto.PerbaikanDilakukan;
-                    if (dto.TanggalPerbaikan.HasValue) entity.TanggalPerbaikan = dto.TanggalPerbaikan.Value;
-                    if (dto.TanggalSelesaiPerbaikan.HasValue) entity.TanggalSelesaiPerbaikan = dto.TanggalSelesaiPerbaikan.Value;
-                    if (!string.IsNullOrEmpty(dto.PicPelaksana)) entity.PicPelaksana = dto.PicPelaksana;
-                    if (!string.IsNullOrEmpty(dto.Status)) entity.Status = dto.Status;
-                    if (!string.IsNullOrEmpty(dto.Keterangan)) entity.Keterangan = dto.Keterangan;
+                    if (trackedEntity == null) return null;
 
-                    if (dto.Status == "Closed" && entity.TanggalClosed == null)
+                    var oldStatus = trackedEntity.Status;
+
+                    // ✅ UPDATE LOGIC BARU - HANDLE SEMUA KASUS
+                    // KASUS 1: dto.Field == null → JANGAN UPDATE (field tidak diubah)
+                    // KASUS 2: dto.Field == "" → SET JADI NULL (user kosongkan field)
+                    // KASUS 3: dto.Field == "value" → UPDATE dengan value baru
+
+                    // ============ FIELD TEMUAN INFO ============
+                    if (dto.Ruang != null)
                     {
-                        entity.TanggalClosed = DateTime.UtcNow;
+                        trackedEntity.Ruang = string.IsNullOrWhiteSpace(dto.Ruang) 
+                            ? trackedEntity.Ruang // Jangan ubah kalau empty
+                            : dto.Ruang.Trim();
+                        _logger.LogInformation("📝 Updated Ruang: {Ruang}", trackedEntity.Ruang);
                     }
 
-                    // ✅ HANDLE FOTO TEMUAN UPDATE
+                    if (dto.Temuan != null)
+                    {
+                        trackedEntity.Temuan = string.IsNullOrWhiteSpace(dto.Temuan)
+                            ? trackedEntity.Temuan
+                            : dto.Temuan.Trim();
+                        _logger.LogInformation("📝 Updated Temuan");
+                    }
+
+                    if (dto.KategoriTemuan != null)
+                    {
+                        trackedEntity.KategoriTemuan = string.IsNullOrWhiteSpace(dto.KategoriTemuan)
+                            ? null
+                            : dto.KategoriTemuan.Trim();
+                        _logger.LogInformation("📝 Updated KategoriTemuan: {Value}", trackedEntity.KategoriTemuan ?? "NULL");
+                    }
+
+                    if (dto.Inspector != null)
+                    {
+                        trackedEntity.Inspector = string.IsNullOrWhiteSpace(dto.Inspector)
+                            ? null
+                            : dto.Inspector.Trim();
+                        _logger.LogInformation("📝 Updated Inspector: {Value}", trackedEntity.Inspector ?? "NULL");
+                    }
+
+                    if (dto.Severity != null && !string.IsNullOrWhiteSpace(dto.Severity))
+                    {
+                        trackedEntity.Severity = dto.Severity;
+                        _logger.LogInformation("📝 Updated Severity: {Severity}", trackedEntity.Severity);
+                    }
+
+                    if (dto.TanggalTemuan.HasValue)
+                    {
+                        trackedEntity.TanggalTemuan = dto.TanggalTemuan.Value.Date;
+                        _logger.LogInformation("📝 Updated TanggalTemuan: {Date}", trackedEntity.TanggalTemuan);
+                    }
+
+                    // ============ FIELD PERBAIKAN & FOLLOW UP ============
+                    if (dto.NoFollowUp != null)
+                    {
+                        trackedEntity.NoFollowUp = string.IsNullOrWhiteSpace(dto.NoFollowUp)
+                            ? null
+                            : dto.NoFollowUp.Trim();
+                        _logger.LogInformation("📝 Updated NoFollowUp: {Value}", trackedEntity.NoFollowUp ?? "NULL");
+                    }
+
+                    if (dto.PerbaikanDilakukan != null)
+                    {
+                        trackedEntity.PerbaikanDilakukan = string.IsNullOrWhiteSpace(dto.PerbaikanDilakukan)
+                            ? null
+                            : dto.PerbaikanDilakukan.Trim();
+                        _logger.LogInformation("📝 Updated PerbaikanDilakukan: {Length} chars",
+                            trackedEntity.PerbaikanDilakukan?.Length ?? 0);
+                    }
+
+                    if (dto.TanggalPerbaikan.HasValue)
+                    {
+                        trackedEntity.TanggalPerbaikan = dto.TanggalPerbaikan.Value.Date;
+                        _logger.LogInformation("📝 Updated TanggalPerbaikan: {Date}", trackedEntity.TanggalPerbaikan);
+                    }
+
+                    if (dto.TanggalSelesaiPerbaikan.HasValue)
+                    {
+                        trackedEntity.TanggalSelesaiPerbaikan = dto.TanggalSelesaiPerbaikan.Value.Date;
+                        _logger.LogInformation("📝 Updated TanggalSelesaiPerbaikan: {Date}",
+                            trackedEntity.TanggalSelesaiPerbaikan);
+                    }
+
+                    if (dto.PicPelaksana != null)
+                    {
+                        trackedEntity.PicPelaksana = string.IsNullOrWhiteSpace(dto.PicPelaksana)
+                            ? null
+                            : dto.PicPelaksana.Trim();
+                        _logger.LogInformation("📝 Updated PicPelaksana: {Value}", trackedEntity.PicPelaksana ?? "NULL");
+                    }
+
+                    if (dto.Status != null && !string.IsNullOrWhiteSpace(dto.Status))
+                    {
+                        trackedEntity.Status = dto.Status;
+                        _logger.LogInformation("📝 Updated Status: {Old} → {New}", oldStatus, trackedEntity.Status);
+                    }
+
+                    if (dto.Keterangan != null)
+                    {
+                        trackedEntity.Keterangan = string.IsNullOrWhiteSpace(dto.Keterangan)
+                            ? null
+                            : dto.Keterangan.Trim();
+                        _logger.LogInformation("📝 Updated Keterangan: {Length} chars",
+                            trackedEntity.Keterangan?.Length ?? 0);
+                    }
+
+                    // ✅ AUTO SET TanggalClosed
+                    if (dto.Status == "Closed" && trackedEntity.TanggalClosed == null)
+                    {
+                        trackedEntity.TanggalClosed = DateTime.UtcNow;
+                        _logger.LogInformation("✅ Auto-set TanggalClosed: {Date}", trackedEntity.TanggalClosed);
+                    }
+
+                    // ✅ HANDLE FOTO TEMUAN
                     if (dto.FotoTemuanFiles != null && dto.FotoTemuanFiles.Count > 0)
                     {
-                        var existingTemuanUrls = new List<string>();
-                        if (!string.IsNullOrEmpty(entity.FotoTemuanUrls))
+                        _logger.LogInformation("📤 Uploading {Count} foto temuan...", dto.FotoTemuanFiles.Count);
+
+                        var existingUrls = new List<string>();
+                        if (!string.IsNullOrEmpty(trackedEntity.FotoTemuanUrls))
                         {
                             try
                             {
-                                existingTemuanUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoTemuanUrls) ?? new List<string>();
+                                existingUrls = JsonSerializer.Deserialize<List<string>>(trackedEntity.FotoTemuanUrls)
+                                    ?? new List<string>();
                             }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning("❌ Error parsing existing FotoTemuanUrls: {Message}", ex.Message);
-                            }
+                            catch { existingUrls = new List<string>(); }
                         }
 
                         foreach (var file in dto.FotoTemuanFiles)
@@ -325,38 +420,92 @@ namespace Pm.Services
                                     var url = await _cloudinary.UploadImageAsync(file, "inspeksi/kpc/temuan");
                                     if (!string.IsNullOrEmpty(url))
                                     {
-                                        existingTemuanUrls.Add(url);
+                                        existingUrls.Add(url);
+                                        _logger.LogInformation("✅ Uploaded: {Url}", url);
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    _logger.LogError("❌ Error uploading foto temuan: {Message}", ex.Message);
+                                    _logger.LogError(ex, "❌ Upload failed: {FileName}", file.FileName);
                                 }
                             }
                         }
 
-                        entity.FotoTemuanUrls = JsonSerializer.Serialize(existingTemuanUrls);
+                        trackedEntity.FotoTemuanUrls = JsonSerializer.Serialize(existingUrls);
+                        _logger.LogInformation("💾 Total foto temuan: {Count}", existingUrls.Count);
                     }
 
-                    // ✅ HANDLE FOTO HASIL UPDATE (existing code)
+                    // ✅ HANDLE FOTO HASIL
                     if (dto.FotoHasilFiles != null && dto.FotoHasilFiles.Count > 0)
                     {
-                        // ... existing foto hasil code ...
+                        _logger.LogInformation("📤 Uploading {Count} foto hasil...", dto.FotoHasilFiles.Count);
+
+                        var existingUrls = new List<string>();
+                        if (!string.IsNullOrEmpty(trackedEntity.FotoHasilUrls))
+                        {
+                            try
+                            {
+                                existingUrls = JsonSerializer.Deserialize<List<string>>(trackedEntity.FotoHasilUrls)
+                                    ?? new List<string>();
+                            }
+                            catch { existingUrls = new List<string>(); }
+                        }
+
+                        foreach (var file in dto.FotoHasilFiles)
+                        {
+                            if (file.Length > 0)
+                            {
+                                try
+                                {
+                                    var url = await _cloudinary.UploadImageAsync(file, "inspeksi/kpc/hasil");
+                                    if (!string.IsNullOrEmpty(url))
+                                    {
+                                        existingUrls.Add(url);
+                                        _logger.LogInformation("✅ Uploaded: {Url}", url);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "❌ Upload failed: {FileName}", file.FileName);
+                                }
+                            }
+                        }
+
+                        trackedEntity.FotoHasilUrls = JsonSerializer.Serialize(existingUrls);
+                        _logger.LogInformation("💾 Total foto hasil: {Count}", existingUrls.Count);
                     }
 
-                    entity.UpdatedBy = userId;
-                    entity.UpdatedAt = DateTime.UtcNow;
+                    // ✅ SET METADATA
+                    trackedEntity.UpdatedBy = userId;
+                    trackedEntity.UpdatedAt = DateTime.UtcNow;
 
+                    // ✅ FORCE EF TO DETECT CHANGES
+                    _context.Entry(trackedEntity).State = EntityState.Modified;
+
+                    _logger.LogInformation("💾 Saving changes...");
                     var changes = await _context.SaveChangesAsync();
+
                     await transaction.CommitAsync();
+
+                    _logger.LogInformation("✅ SaveChanges: {Changes} rows affected", changes);
 
                     if (changes > 0)
                     {
-                        await _log.LogAsync("InspeksiTemuanKpc", id, "Updated", userId, $"Status: {oldStatus} → {entity.Status}");
+                        // Log activity
+                        var activityMsg = $"Status: {oldStatus} → {trackedEntity.Status}";
+                        if (dto.FotoTemuanFiles?.Count > 0)
+                            activityMsg += $", +{dto.FotoTemuanFiles.Count} foto temuan";
+                        if (dto.FotoHasilFiles?.Count > 0)
+                            activityMsg += $", +{dto.FotoHasilFiles.Count} foto hasil";
+
+                        await _log.LogAsync("InspeksiTemuanKpc", id, "Updated", userId, activityMsg);
+
+                        // ✅ RETURN FRESH DATA
                         return await GetByIdAsync(id);
                     }
                     else
                     {
+                        _logger.LogError("❌ No changes detected!");
                         await transaction.RollbackAsync();
                         return null;
                     }
@@ -364,13 +513,14 @@ namespace Pm.Services
                 catch (Exception ex)
                 {
                     await transaction.RollbackAsync();
+                    _logger.LogError(ex, "❌ Transaction failed");
                     throw;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error in UpdateAsync");
-                return null;
+                _logger.LogError(ex, "❌ Update failed");
+                throw;
             }
         }
 
@@ -507,8 +657,142 @@ namespace Pm.Services
             }
         }
 
+        public async Task<bool> DeletePermanentAsync(int id, int userId)
+        {
+            try
+            {
+                _logger.LogInformation("🔥 Starting PERMANENT delete for ID: {Id}", id);
+
+                var entity = await _context.InspeksiTemuanKpcs
+                    .AsTracking()
+                    .FirstOrDefaultAsync(x => x.Id == id);
+
+                if (entity == null)
+                {
+                    _logger.LogWarning("❌ Entity not found: {Id}", id);
+                    return false;
+                }
+
+                // ✅ VERIFY THAT IT'S ALREADY SOFT DELETED (SAFETY CHECK)
+                if (!entity.IsDeleted)
+                {
+                    _logger.LogWarning("⚠️ Cannot permanently delete item that is not in history. ID: {Id}", id);
+                    throw new InvalidOperationException("Item harus dipindahkan ke history terlebih dahulu sebelum dihapus permanen");
+                }
+
+                _logger.LogInformation("📊 Found entity to delete permanently - Ruang: {Ruang}, Status: {Status}, IsDeleted: {IsDeleted}",
+                    entity.Ruang, entity.Status, entity.IsDeleted);
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+
+                try
+                {
+                    // ✅ DELETE IMAGES FROM CLOUDINARY
+                    var deletedImages = new List<string>();
+
+                    // Delete Foto Temuan
+                    if (!string.IsNullOrEmpty(entity.FotoTemuanUrls))
+                    {
+                        try
+                        {
+                            var fotoTemuanUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoTemuanUrls);
+                            if (fotoTemuanUrls != null && fotoTemuanUrls.Count > 0)
+                            {
+                                _logger.LogInformation("🗑️ Deleting {Count} foto temuan from Cloudinary...", fotoTemuanUrls.Count);
+                                
+                                foreach (var url in fotoTemuanUrls)
+                                {
+                                    try
+                                    {
+                                        await _cloudinary.DeleteImageAsync(url);
+                                        deletedImages.Add(url);
+                                        _logger.LogInformation("✅ Deleted foto temuan: {Url}", url);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning("⚠️ Failed to delete foto temuan {Url}: {Message}", url, ex.Message);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("⚠️ Error parsing FotoTemuanUrls: {Message}", ex.Message);
+                        }
+                    }
+
+                    // Delete Foto Hasil
+                    if (!string.IsNullOrEmpty(entity.FotoHasilUrls))
+                    {
+                        try
+                        {
+                            var fotoHasilUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoHasilUrls);
+                            if (fotoHasilUrls != null && fotoHasilUrls.Count > 0)
+                            {
+                                _logger.LogInformation("🗑️ Deleting {Count} foto hasil from Cloudinary...", fotoHasilUrls.Count);
+                                
+                                foreach (var url in fotoHasilUrls)
+                                {
+                                    try
+                                    {
+                                        await _cloudinary.DeleteImageAsync(url);
+                                        deletedImages.Add(url);
+                                        _logger.LogInformation("✅ Deleted foto hasil: {Url}", url);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning("⚠️ Failed to delete foto hasil {Url}: {Message}", url, ex.Message);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("⚠️ Error parsing FotoHasilUrls: {Message}", ex.Message);
+                        }
+                    }
+
+                    _logger.LogInformation("📊 Total images deleted from Cloudinary: {Count}", deletedImages.Count);
+
+                    // ✅ DELETE FROM DATABASE
+                    _context.InspeksiTemuanKpcs.Remove(entity);
+                    
+                    _logger.LogInformation("💾 Saving permanent delete to database...");
+                    var changes = await _context.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+
+                    _logger.LogInformation("💾 Permanent delete completed. Affected rows: {Changes}", changes);
+
+                    if (changes > 0)
+                    {
+                        _logger.LogInformation("✅ Successfully permanently deleted ID: {Id}", id);
+                        await _log.LogAsync("InspeksiTemuanKpc", id, "Permanently Deleted", userId, 
+                            $"Dihapus permanen - Ruang: {entity.Ruang}, {deletedImages.Count} images deleted");
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogError("❌ No changes saved for permanent delete ID: {Id}", id);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogError(ex, "❌ Permanent delete transaction failed for ID: {Id}", id);
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error in DeletePermanentAsync for ID: {Id}", id);
+                throw;
+            }
+        }
+
         // ✅ === FIXED EXCEL EXPORT - SHOW ALL IMAGES ===
-       public async Task<byte[]> ExportToExcelAsync(bool history, DateTime? start, DateTime? end, string? ruang, string? status)
+        public async Task<byte[]> ExportToExcelAsync(bool history, DateTime? start, DateTime? end, string? ruang, string? status)
         {
             try
             {

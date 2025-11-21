@@ -22,13 +22,13 @@ namespace Pm.Models
         [MaxLength(500)]
         public string? PhotoUrl { get; set; } // Added for profile photo
 
-        public bool IsActive { get; set; } = true;
+        public bool IsActive { get; set; } = false;
 
         public int RoleId { get; set; }
         public virtual Role? Role { get; set; }
 
         public DateTime? LastLogin { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? UpdatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }

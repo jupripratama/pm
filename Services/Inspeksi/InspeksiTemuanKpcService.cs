@@ -256,274 +256,282 @@ namespace Pm.Services
         }
 
         public async Task<InspeksiTemuanKpcDto?> UpdateAsync(int id, UpdateInspeksiTemuanKpcDto dto, int userId)
+{
+    try
+    {
+        _logger.LogInformation("🔄 Starting update for ID: {Id}", id);
+        _logger.LogInformation("📁 Files received - FotoTemuan: {TemuanCount}, FotoHasil: {HasilCount}", 
+            dto.FotoTemuanFiles?.Count ?? 0, dto.FotoHasilFiles?.Count ?? 0);
+
+        var entity = await _context.InspeksiTemuanKpcs
+            .AsTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+
+        if (entity == null) return null;
+
+        var oldStatus = entity.Status;
+
+        // ✅ LOG SEMUA DATA YANG DITERIMA
+        _logger.LogInformation("📊 Received DTO - Ruang: '{Ruang}', Temuan: '{Temuan}', Status: '{Status}'", 
+            dto.Ruang ?? "NULL", dto.Temuan ?? "NULL", dto.Status ?? "NULL");
+
+        // ✅ UPDATE SEMUA FIELD YANG DISEDIAKAN
+        if (dto.Ruang != null) 
         {
-            try
+            entity.Ruang = dto.Ruang.Trim();
+            _logger.LogInformation("📝 Updated Ruang: '{Value}'", entity.Ruang);
+        }
+
+        if (dto.Temuan != null)
+        {
+            entity.Temuan = dto.Temuan.Trim();
+            _logger.LogInformation("📝 Updated Temuan: '{Value}'", entity.Temuan);
+        }
+
+        if (dto.KategoriTemuan != null)
+        {
+            entity.KategoriTemuan = dto.KategoriTemuan.Trim();
+            _logger.LogInformation("📝 Updated KategoriTemuan: '{Value}'", entity.KategoriTemuan);
+        }
+
+        if (dto.Inspector != null)
+        {
+            entity.Inspector = dto.Inspector.Trim();
+            _logger.LogInformation("📝 Updated Inspector: '{Value}'", entity.Inspector);
+        }
+
+        if (dto.Severity != null)
+        {
+            entity.Severity = dto.Severity;
+            _logger.LogInformation("📝 Updated Severity: '{Value}'", entity.Severity);
+        }
+
+        if (dto.TanggalTemuan.HasValue)
+        {
+            entity.TanggalTemuan = dto.TanggalTemuan.Value.Date;
+            _logger.LogInformation("📝 Updated TanggalTemuan: {Date}", entity.TanggalTemuan);
+        }
+
+        // ✅ HANDLE CLEAR FLAGS UNTUK FIELD TEXT
+        if (dto.ClearNoFollowUp)
+        {
+            entity.NoFollowUp = null;
+            _logger.LogInformation("🗑️ Cleared NoFollowUp (clear flag)");
+        }
+        else if (dto.NoFollowUp != null)
+        {
+            entity.NoFollowUp = string.IsNullOrWhiteSpace(dto.NoFollowUp) ? null : dto.NoFollowUp.Trim();
+            _logger.LogInformation("📝 Updated NoFollowUp: '{Value}'", entity.NoFollowUp ?? "NULL");
+        }
+
+        if (dto.ClearPicPelaksana)
+        {
+            entity.PicPelaksana = null;
+            _logger.LogInformation("🗑️ Cleared PicPelaksana (clear flag)");
+        }
+        else if (dto.PicPelaksana != null)
+        {
+            entity.PicPelaksana = string.IsNullOrWhiteSpace(dto.PicPelaksana) ? null : dto.PicPelaksana.Trim();
+            _logger.LogInformation("📝 Updated PicPelaksana: '{Value}'", entity.PicPelaksana ?? "NULL");
+        }
+
+        if (dto.ClearPerbaikanDilakukan)
+        {
+            entity.PerbaikanDilakukan = null;
+            _logger.LogInformation("🗑️ Cleared PerbaikanDilakukan (clear flag)");
+        }
+        else if (dto.PerbaikanDilakukan != null)
+        {
+            entity.PerbaikanDilakukan = string.IsNullOrWhiteSpace(dto.PerbaikanDilakukan) ? null : dto.PerbaikanDilakukan.Trim();
+            _logger.LogInformation("📝 Updated PerbaikanDilakukan: '{Value}'", entity.PerbaikanDilakukan ?? "NULL");
+        }
+
+        if (dto.ClearKeterangan)
+        {
+            entity.Keterangan = null;
+            _logger.LogInformation("🗑️ Cleared Keterangan (clear flag)");
+        }
+        else if (dto.Keterangan != null)
+        {
+            entity.Keterangan = string.IsNullOrWhiteSpace(dto.Keterangan) ? null : dto.Keterangan.Trim();
+            _logger.LogInformation("📝 Updated Keterangan: '{Value}'", entity.Keterangan ?? "NULL");
+        }
+
+        // Handle date fields
+        if (dto.TanggalPerbaikan.HasValue)
+        {
+            entity.TanggalPerbaikan = dto.TanggalPerbaikan.Value.Date;
+            _logger.LogInformation("📝 Updated TanggalPerbaikan: {Date}", entity.TanggalPerbaikan);
+        }
+        else if (dto.TanggalPerbaikan == null) // Explicit null check
+        {
+            entity.TanggalPerbaikan = null;
+            _logger.LogInformation("🗑️ Cleared TanggalPerbaikan");
+        }
+
+        if (dto.TanggalSelesaiPerbaikan.HasValue)
+        {
+            entity.TanggalSelesaiPerbaikan = dto.TanggalSelesaiPerbaikan.Value.Date;
+            _logger.LogInformation("📝 Updated TanggalSelesaiPerbaikan: {Date}", entity.TanggalSelesaiPerbaikan);
+        }
+        else if (dto.TanggalSelesaiPerbaikan == null) // Explicit null check
+        {
+            entity.TanggalSelesaiPerbaikan = null;
+            _logger.LogInformation("🗑️ Cleared TanggalSelesaiPerbaikan");
+        }
+
+        if (dto.Status != null)
+        {
+            entity.Status = dto.Status;
+            _logger.LogInformation("📝 Updated Status: {Old} → {New}", oldStatus, entity.Status);
+        }
+
+        // ✅ FIXED: UPLOAD FOTO HASIL - DENGAN ERROR HANDLING YANG LEBIH BAIK
+        if (dto.FotoHasilFiles != null && dto.FotoHasilFiles.Count > 0)
+        {
+            _logger.LogInformation("📤 UPLOAD FOTO HASIL - Starting upload for {Count} files", dto.FotoHasilFiles.Count);
+            
+            var existingUrls = new List<string>();
+            if (!string.IsNullOrEmpty(entity.FotoHasilUrls))
             {
-                _logger.LogInformation("🔄 Starting update for ID: {Id}", id);
-
-                using var transaction = await _context.Database.BeginTransactionAsync();
-
                 try
                 {
-                    var entity = await _context.InspeksiTemuanKpcs
-                        .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
-
-                    if (entity == null)
-                    {
-                        _logger.LogWarning("❌ Entity not found or deleted: {Id}", id);
-                        return null;
-                    }
-
-                    // ✅ DETACH & RE-ATTACH untuk force tracking
-                    _context.Entry(entity).State = EntityState.Detached;
-                    var trackedEntity = await _context.InspeksiTemuanKpcs
-                        .AsTracking()
-                        .FirstOrDefaultAsync(x => x.Id == id);
-
-                    if (trackedEntity == null) return null;
-
-                    var oldStatus = trackedEntity.Status;
-
-                    // ✅ UPDATE LOGIC BARU - HANDLE SEMUA KASUS
-                    // KASUS 1: dto.Field == null → JANGAN UPDATE (field tidak diubah)
-                    // KASUS 2: dto.Field == "" → SET JADI NULL (user kosongkan field)
-                    // KASUS 3: dto.Field == "value" → UPDATE dengan value baru
-
-                    // ============ FIELD TEMUAN INFO ============
-                    if (dto.Ruang != null)
-                    {
-                        trackedEntity.Ruang = string.IsNullOrWhiteSpace(dto.Ruang) 
-                            ? trackedEntity.Ruang // Jangan ubah kalau empty
-                            : dto.Ruang.Trim();
-                        _logger.LogInformation("📝 Updated Ruang: {Ruang}", trackedEntity.Ruang);
-                    }
-
-                    if (dto.Temuan != null)
-                    {
-                        trackedEntity.Temuan = string.IsNullOrWhiteSpace(dto.Temuan)
-                            ? trackedEntity.Temuan
-                            : dto.Temuan.Trim();
-                        _logger.LogInformation("📝 Updated Temuan");
-                    }
-
-                    if (dto.KategoriTemuan != null)
-                    {
-                        trackedEntity.KategoriTemuan = string.IsNullOrWhiteSpace(dto.KategoriTemuan)
-                            ? null
-                            : dto.KategoriTemuan.Trim();
-                        _logger.LogInformation("📝 Updated KategoriTemuan: {Value}", trackedEntity.KategoriTemuan ?? "NULL");
-                    }
-
-                    if (dto.Inspector != null)
-                    {
-                        trackedEntity.Inspector = string.IsNullOrWhiteSpace(dto.Inspector)
-                            ? null
-                            : dto.Inspector.Trim();
-                        _logger.LogInformation("📝 Updated Inspector: {Value}", trackedEntity.Inspector ?? "NULL");
-                    }
-
-                    if (dto.Severity != null && !string.IsNullOrWhiteSpace(dto.Severity))
-                    {
-                        trackedEntity.Severity = dto.Severity;
-                        _logger.LogInformation("📝 Updated Severity: {Severity}", trackedEntity.Severity);
-                    }
-
-                    if (dto.TanggalTemuan.HasValue)
-                    {
-                        trackedEntity.TanggalTemuan = dto.TanggalTemuan.Value.Date;
-                        _logger.LogInformation("📝 Updated TanggalTemuan: {Date}", trackedEntity.TanggalTemuan);
-                    }
-
-                    // ============ FIELD PERBAIKAN & FOLLOW UP ============
-                    if (dto.NoFollowUp != null)
-                    {
-                        trackedEntity.NoFollowUp = string.IsNullOrWhiteSpace(dto.NoFollowUp)
-                            ? null
-                            : dto.NoFollowUp.Trim();
-                        _logger.LogInformation("📝 Updated NoFollowUp: {Value}", trackedEntity.NoFollowUp ?? "NULL");
-                    }
-
-                    if (dto.PerbaikanDilakukan != null)
-                    {
-                        trackedEntity.PerbaikanDilakukan = string.IsNullOrWhiteSpace(dto.PerbaikanDilakukan)
-                            ? null
-                            : dto.PerbaikanDilakukan.Trim();
-                        _logger.LogInformation("📝 Updated PerbaikanDilakukan: {Length} chars",
-                            trackedEntity.PerbaikanDilakukan?.Length ?? 0);
-                    }
-
-                    if (dto.TanggalPerbaikan.HasValue)
-                    {
-                        trackedEntity.TanggalPerbaikan = dto.TanggalPerbaikan.Value.Date;
-                        _logger.LogInformation("📝 Updated TanggalPerbaikan: {Date}", trackedEntity.TanggalPerbaikan);
-                    }
-
-                    if (dto.TanggalSelesaiPerbaikan.HasValue)
-                    {
-                        trackedEntity.TanggalSelesaiPerbaikan = dto.TanggalSelesaiPerbaikan.Value.Date;
-                        _logger.LogInformation("📝 Updated TanggalSelesaiPerbaikan: {Date}",
-                            trackedEntity.TanggalSelesaiPerbaikan);
-                    }
-
-                    if (dto.PicPelaksana != null)
-                    {
-                        trackedEntity.PicPelaksana = string.IsNullOrWhiteSpace(dto.PicPelaksana)
-                            ? null
-                            : dto.PicPelaksana.Trim();
-                        _logger.LogInformation("📝 Updated PicPelaksana: {Value}", trackedEntity.PicPelaksana ?? "NULL");
-                    }
-
-                    if (dto.Status != null && !string.IsNullOrWhiteSpace(dto.Status))
-                    {
-                        trackedEntity.Status = dto.Status;
-                        _logger.LogInformation("📝 Updated Status: {Old} → {New}", oldStatus, trackedEntity.Status);
-                    }
-
-                    if (dto.Keterangan != null)
-                    {
-                        trackedEntity.Keterangan = string.IsNullOrWhiteSpace(dto.Keterangan)
-                            ? null
-                            : dto.Keterangan.Trim();
-                        _logger.LogInformation("📝 Updated Keterangan: {Length} chars",
-                            trackedEntity.Keterangan?.Length ?? 0);
-                    }
-
-                    // ✅ AUTO SET TanggalClosed
-                    if (dto.Status == "Closed" && trackedEntity.TanggalClosed == null)
-                    {
-                        trackedEntity.TanggalClosed = DateTime.UtcNow;
-                        _logger.LogInformation("✅ Auto-set TanggalClosed: {Date}", trackedEntity.TanggalClosed);
-                    }
-
-                    // ✅ HANDLE FOTO TEMUAN
-                    if (dto.FotoTemuanFiles != null && dto.FotoTemuanFiles.Count > 0)
-                    {
-                        _logger.LogInformation("📤 Uploading {Count} foto temuan...", dto.FotoTemuanFiles.Count);
-
-                        var existingUrls = new List<string>();
-                        if (!string.IsNullOrEmpty(trackedEntity.FotoTemuanUrls))
-                        {
-                            try
-                            {
-                                existingUrls = JsonSerializer.Deserialize<List<string>>(trackedEntity.FotoTemuanUrls)
-                                    ?? new List<string>();
-                            }
-                            catch { existingUrls = new List<string>(); }
-                        }
-
-                        foreach (var file in dto.FotoTemuanFiles)
-                        {
-                            if (file.Length > 0)
-                            {
-                                try
-                                {
-                                    var url = await _cloudinary.UploadImageAsync(file, "inspeksi/kpc/temuan");
-                                    if (!string.IsNullOrEmpty(url))
-                                    {
-                                        existingUrls.Add(url);
-                                        _logger.LogInformation("✅ Uploaded: {Url}", url);
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "❌ Upload failed: {FileName}", file.FileName);
-                                }
-                            }
-                        }
-
-                        trackedEntity.FotoTemuanUrls = JsonSerializer.Serialize(existingUrls);
-                        _logger.LogInformation("💾 Total foto temuan: {Count}", existingUrls.Count);
-                    }
-
-                    // ✅ HANDLE FOTO HASIL
-                    if (dto.FotoHasilFiles != null && dto.FotoHasilFiles.Count > 0)
-                    {
-                        _logger.LogInformation("📤 Uploading {Count} foto hasil...", dto.FotoHasilFiles.Count);
-
-                        var existingUrls = new List<string>();
-                        if (!string.IsNullOrEmpty(trackedEntity.FotoHasilUrls))
-                        {
-                            try
-                            {
-                                existingUrls = JsonSerializer.Deserialize<List<string>>(trackedEntity.FotoHasilUrls)
-                                    ?? new List<string>();
-                            }
-                            catch { existingUrls = new List<string>(); }
-                        }
-
-                        foreach (var file in dto.FotoHasilFiles)
-                        {
-                            if (file.Length > 0)
-                            {
-                                try
-                                {
-                                    var url = await _cloudinary.UploadImageAsync(file, "inspeksi/kpc/hasil");
-                                    if (!string.IsNullOrEmpty(url))
-                                    {
-                                        existingUrls.Add(url);
-                                        _logger.LogInformation("✅ Uploaded: {Url}", url);
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "❌ Upload failed: {FileName}", file.FileName);
-                                }
-                            }
-                        }
-
-                        trackedEntity.FotoHasilUrls = JsonSerializer.Serialize(existingUrls);
-                        _logger.LogInformation("💾 Total foto hasil: {Count}", existingUrls.Count);
-                    }
-
-                    // ✅ SET METADATA
-                    trackedEntity.UpdatedBy = userId;
-                    trackedEntity.UpdatedAt = DateTime.UtcNow;
-
-                    // ✅ FORCE EF TO DETECT CHANGES
-                    _context.Entry(trackedEntity).State = EntityState.Modified;
-
-                    _logger.LogInformation("💾 Saving changes...");
-                    var changes = await _context.SaveChangesAsync();
-
-                    await transaction.CommitAsync();
-
-                    _logger.LogInformation("✅ SaveChanges: {Changes} rows affected", changes);
-
-                    if (changes > 0)
-                    {
-                        // Log activity
-                        var activityMsg = $"Status: {oldStatus} → {trackedEntity.Status}";
-                        if (dto.FotoTemuanFiles?.Count > 0)
-                            activityMsg += $", +{dto.FotoTemuanFiles.Count} foto temuan";
-                        if (dto.FotoHasilFiles?.Count > 0)
-                            activityMsg += $", +{dto.FotoHasilFiles.Count} foto hasil";
-
-                        await _log.LogAsync("InspeksiTemuanKpc", id, "Updated", userId, activityMsg);
-
-                        // ✅ RETURN FRESH DATA
-                        return await GetByIdAsync(id);
-                    }
-                    else
-                    {
-                        _logger.LogError("❌ No changes detected!");
-                        await transaction.RollbackAsync();
-                        return null;
-                    }
+                    existingUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoHasilUrls) ?? new List<string>();
+                    _logger.LogInformation("📁 Existing foto hasil: {Count} images", existingUrls.Count);
                 }
                 catch (Exception ex)
                 {
-                    await transaction.RollbackAsync();
-                    _logger.LogError(ex, "❌ Transaction failed");
-                    throw;
+                    _logger.LogWarning("⚠️ Error parsing existing foto hasil: {Message}", ex.Message);
+                    existingUrls = new List<string>();
                 }
             }
-            catch (Exception ex)
+
+            int successCount = 0;
+            int failedCount = 0;
+            
+            foreach (var file in dto.FotoHasilFiles)
             {
-                _logger.LogError(ex, "❌ Update failed");
-                throw;
+                if (file.Length > 0)
+                {
+                    try
+                    {
+                        _logger.LogInformation("⬆️ Uploading foto hasil: {FileName} ({Size} bytes)", 
+                            file.FileName, file.Length);
+                        
+                        // ✅ UPLOAD KE CLOUDINARY
+                        var url = await _cloudinary.UploadImageAsync(file, "inspeksi/kpc/hasil");
+                        
+                        if (!string.IsNullOrEmpty(url))
+                        {
+                            existingUrls.Add(url);
+                            successCount++;
+                            _logger.LogInformation("✅ SUCCESS uploaded foto hasil: {Url}", url);
+                        }
+                        else
+                        {
+                            failedCount++;
+                            _logger.LogWarning("❌ Cloudinary returned empty URL for: {FileName}", file.FileName);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        _logger.LogError(ex, "❌ UPLOAD FAILED for foto hasil: {FileName}", file.FileName);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Empty file skipped: {FileName}", file.FileName);
+                    failedCount++;
+                }
             }
+
+            // ✅ UPDATE FOTO HASIL URLs
+            entity.FotoHasilUrls = existingUrls.Count > 0 ? JsonSerializer.Serialize(existingUrls) : null;
+            _logger.LogInformation("📊 FOTO HASIL UPLOAD SUMMARY - Success: {Success}, Failed: {Failed}, Total URLs: {Total}", 
+                successCount, failedCount, existingUrls.Count);
+        }
+        else
+        {
+            _logger.LogInformation("📁 No new foto hasil files to upload");
         }
 
+        // ✅ HANDLE FOTO TEMUAN JUGA
+        if (dto.FotoTemuanFiles != null && dto.FotoTemuanFiles.Count > 0)
+        {
+            _logger.LogInformation("📤 UPLOAD FOTO TEMUAN - Starting upload for {Count} files", dto.FotoTemuanFiles.Count);
+            
+            var existingUrls = new List<string>();
+            if (!string.IsNullOrEmpty(entity.FotoTemuanUrls))
+            {
+                try
+                {
+                    existingUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoTemuanUrls) ?? new List<string>();
+                    _logger.LogInformation("📁 Existing foto temuan: {Count} images", existingUrls.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("⚠️ Error parsing existing foto temuan: {Message}", ex.Message);
+                    existingUrls = new List<string>();
+                }
+            }
+
+            int successCount = 0;
+            foreach (var file in dto.FotoTemuanFiles)
+            {
+                if (file.Length > 0)
+                {
+                    try
+                    {
+                        _logger.LogInformation("⬆️ Uploading foto temuan: {FileName}", file.FileName);
+                        var url = await _cloudinary.UploadImageAsync(file, "inspeksi/kpc/temuan");
+                        if (!string.IsNullOrEmpty(url))
+                        {
+                            existingUrls.Add(url);
+                            successCount++;
+                            _logger.LogInformation("✅ SUCCESS uploaded foto temuan: {Url}", url);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "❌ UPLOAD FAILED for foto temuan: {FileName}", file.FileName);
+                    }
+                }
+            }
+
+            entity.FotoTemuanUrls = existingUrls.Count > 0 ? JsonSerializer.Serialize(existingUrls) : null;
+            _logger.LogInformation("📊 FOTO TEMUAN UPLOAD SUMMARY - Success: {SuccessCount}, Total URLs: {Total}", 
+                successCount, existingUrls.Count);
+        }
+
+        entity.UpdatedBy = userId;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        _logger.LogInformation("💾 Saving changes to database...");
+        var changes = await _context.SaveChangesAsync();
+
+        _logger.LogInformation("✅ SaveChanges completed: {Changes} rows affected", changes);
+
+        if (changes > 0)
+        {
+            await _log.LogAsync("InspeksiTemuanKpc", id, "Updated", userId, $"Status: {oldStatus} → {entity.Status}");
+            
+            // ✅ RELOAD DAN LOG DATA TERBARU
+            var updatedItem = await GetByIdAsync(id);
+            _logger.LogInformation("🔄 UPDATED ITEM VERIFICATION - ID: {Id}, FotoHasilUrls count: {Count}, FotoTemuanUrls count: {TemuanCount}", 
+                id, updatedItem?.FotoHasilUrls?.Count ?? 0, updatedItem?.FotoTemuanUrls?.Count ?? 0);
+            
+            return updatedItem;
+        }
+
+        return null;
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "❌ UPDATE FAILED for ID: {Id}", id);
+        throw;
+    }
+}
         public async Task<bool> DeleteAsync(int id, int userId)
         {
             try
@@ -653,6 +661,87 @@ namespace Pm.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ Error in RestoreAsync for ID: {Id}", id);
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteFotoAsync(int id, int index, string fotoType, int userId)
+        {
+            try
+            {
+                _logger.LogInformation("🗑️ Deleting {FotoType} foto for ID: {Id}, Index: {Index}", fotoType, id, index);
+
+                var entity = await _context.InspeksiTemuanKpcs
+                    .AsTracking()
+                    .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+
+                if (entity == null)
+                {
+                    _logger.LogWarning("❌ Entity not found: {Id}", id);
+                    return false;
+                }
+
+                if (fotoType == "temuan")
+                {
+                    if (!string.IsNullOrEmpty(entity.FotoTemuanUrls))
+                    {
+                        var fotoUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoTemuanUrls) ?? new List<string>();
+                        if (index >= 0 && index < fotoUrls.Count)
+                        {
+                            // Delete from Cloudinary
+                            var urlToDelete = fotoUrls[index];
+                            await _cloudinary.DeleteImageAsync(urlToDelete);
+                            
+                            // Remove from list
+                            fotoUrls.RemoveAt(index);
+                            entity.FotoTemuanUrls = fotoUrls.Count > 0 ? JsonSerializer.Serialize(fotoUrls) : null;
+                            
+                            _logger.LogInformation("✅ Deleted foto temuan: {Url}", urlToDelete);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("❌ Index out of range: {Index}, Total: {Count}", index, fotoUrls.Count);
+                            return false;
+                        }
+                    }
+                }
+                else if (fotoType == "hasil")
+                {
+                    if (!string.IsNullOrEmpty(entity.FotoHasilUrls))
+                    {
+                        var fotoUrls = JsonSerializer.Deserialize<List<string>>(entity.FotoHasilUrls) ?? new List<string>();
+                        if (index >= 0 && index < fotoUrls.Count)
+                        {
+                            // Delete from Cloudinary
+                            var urlToDelete = fotoUrls[index];
+                            await _cloudinary.DeleteImageAsync(urlToDelete);
+                            
+                            // Remove from list
+                            fotoUrls.RemoveAt(index);
+                            entity.FotoHasilUrls = fotoUrls.Count > 0 ? JsonSerializer.Serialize(fotoUrls) : null;
+                            
+                            _logger.LogInformation("✅ Deleted foto hasil: {Url}", urlToDelete);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("❌ Index out of range: {Index}, Total: {Count}", index, fotoUrls.Count);
+                            return false;
+                        }
+                    }
+                }
+
+                // Update metadata
+                entity.UpdatedBy = userId;
+                entity.UpdatedAt = DateTime.UtcNow;
+
+                var changes = await _context.SaveChangesAsync();
+                _logger.LogInformation("💾 SaveChanges: {Changes} rows affected", changes);
+
+                return changes > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error deleting {FotoType} foto for ID: {Id}", fotoType, id);
                 return false;
             }
         }
@@ -853,8 +942,8 @@ namespace Pm.Services
                 ws.Column(12).Width = 15; // PIC
                 ws.Column(13).Width = 12; // Status
                 ws.Column(14).Width = 25; // Keterangan
-                ws.Column(15).Width = 45; // Foto Temuan - EXTRA WIDE
-                ws.Column(16).Width = 45; // Foto Hasil - EXTRA WIDE
+                ws.Column(15).Width = 60; // Foto Temuan - EXTRA WIDE
+                ws.Column(16).Width = 60; // Foto Hasil - EXTRA WIDE
                 ws.Column(17).Width = 18; // Dibuat Oleh
                 ws.Column(18).Width = 20; // Dibuat Pada
 

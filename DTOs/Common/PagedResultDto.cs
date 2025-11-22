@@ -18,6 +18,7 @@ namespace Pm.DTOs.Common
             Page = page;
             PageSize = pageSize;
             TotalCount = totalCount;
+            
         }
 
         // CONSTRUCTOR BARU (untuk InspeksiTemuanKpc)

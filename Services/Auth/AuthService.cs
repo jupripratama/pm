@@ -21,9 +21,10 @@ namespace Pm.Services
 
         public async Task<LoginResponseDto?> LoginAsync(LoginDto dto)
         {
-            _logger.LogInformation("Login attempt for username: {Username}", dto.Username);
+            _logger.LogInformation("🔐 Login attempt for username: {Username}", dto.Username);
 
             var user = await _context.Users
+                .AsTracking()
                 .Include(u => u.Role)
                     .ThenInclude(r => r!.RolePermissions)
                     .ThenInclude(rp => rp.Permission)
@@ -31,13 +32,13 @@ namespace Pm.Services
 
             if (user == null)
             {
-                _logger.LogWarning("Login failed: User {Username} not found or inactive", dto.Username);
+                _logger.LogWarning("❌ Login failed: User {Username} not found or inactive", dto.Username);
                 return null;
             }
 
             if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
             {
-                _logger.LogWarning("Login failed: Invalid password for user {Username}", dto.Username);
+                _logger.LogWarning("❌ Login failed: Invalid password for user {Username}", dto.Username);
                 return null;
             }
 
@@ -50,11 +51,28 @@ namespace Pm.Services
             var token = _jwtService.GenerateToken(user, permissions);
             var expiresIn = _jwtService.GetTokenExpirationTime();
 
-            // Update last login
-            user.LastLogin = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Login successful for user {Username}", dto.Username);
+            // ✅ GUNAKAN DateTimeOffset untuk TRUE UTC
+            var trueUtcTime = DateTimeOffset.UtcNow.DateTime;
+            
+            _logger.LogInformation("🕐 Server Local Time: {Local}", DateTime.Now);
+            _logger.LogInformation("🕐 TRUE UTC Time: {Utc}", trueUtcTime);
+            _logger.LogInformation("🕐 Server Timezone: {Tz}", TimeZoneInfo.Local.Id);
+            
+            user.LastLogin = trueUtcTime;
+            user.UpdatedAt = trueUtcTime;
+            
+            _context.Entry(user).State = EntityState.Modified;
+            
+            try
+            {
+                var rowsAffected = await _context.SaveChangesAsync();
+                _logger.LogInformation("✅ LastLogin saved to DB - UTC: {LastLogin} (Rows: {Rows})", 
+                    user.LastLogin, rowsAffected);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to update LastLogin");
+            }
 
             return new LoginResponseDto
             {
@@ -137,6 +155,7 @@ namespace Pm.Services
 
         public async Task UpdateLastLoginAsync(int userId)
         {
+            
             var user = await _context.Users.FindAsync(userId);
             if (user != null)
             {

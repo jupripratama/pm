@@ -44,14 +44,23 @@ namespace Pm.Data
             // User Configuration
             modelBuilder.Entity<User>(entity =>
             {
-                entity.HasKey(e => e.UserId);
-                entity.HasIndex(e => e.Username).IsUnique();
-                entity.HasIndex(e => e.Email).IsUnique();
+               entity.HasKey(e => e.UserId);
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.FullName).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Email).HasMaxLength(200);
+                entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(255);
+                
+                // ✅ HANYA set default IsActive
+                entity.Property(e => e.IsActive).HasDefaultValue(false);
 
+                
+                entity.Property(e => e.LastLogin).IsRequired(false);
+                entity.Property(e => e.UpdatedAt).IsRequired(false);
+                
                 entity.HasOne(u => u.Role)
-                      .WithMany(r => r.Users)
-                      .HasForeignKey(u => u.RoleId)
-                      .OnDelete(DeleteBehavior.Restrict);
+                    .WithMany(r => r.Users)
+                    .HasForeignKey(u => u.RoleId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
             });
 

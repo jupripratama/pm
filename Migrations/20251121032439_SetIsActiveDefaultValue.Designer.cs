@@ -12,8 +12,8 @@ using Pm.Data;
 namespace Pm.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251117070226_AddInspectorAndTanggalSelesaiPerbaikan")]
-    partial class AddInspectorAndTanggalSelesaiPerbaikan
+    [Migration("20251121032439_SetIsActiveDefaultValue")]
+    partial class SetIsActiveDefaultValue
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -229,20 +229,11 @@ namespace Pm.Migrations
                     b.Property<int>("CreatedBy")
                         .HasColumnType("int");
 
-                    b.Property<int>("CreatedByUserUserId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
-
-                    b.Property<int?>("DeletedByUserUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("FollowUpRef")
-                        .HasColumnType("longtext");
 
                     b.Property<string>("FotoHasilUrls")
                         .HasColumnType("longtext");
@@ -310,16 +301,13 @@ namespace Pm.Migrations
                     b.Property<int?>("UpdatedBy")
                         .HasColumnType("int");
 
-                    b.Property<int?>("UpdatedByUserUserId")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedByUserUserId");
+                    b.HasIndex("CreatedBy");
 
-                    b.HasIndex("DeletedByUserUserId");
+                    b.HasIndex("DeletedBy");
 
-                    b.HasIndex("UpdatedByUserUserId");
+                    b.HasIndex("UpdatedBy");
 
                     b.ToTable("InspeksiTemuanKpcs");
                 });
@@ -426,16 +414,18 @@ namespace Pm.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
 
                     b.Property<DateTime?>("LastLogin")
                         .HasColumnType("datetime(6)");
@@ -457,18 +447,12 @@ namespace Pm.Migrations
 
                     b.Property<string>("Username")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("UserId");
 
-                    b.HasIndex("Email")
-                        .IsUnique();
-
                     b.HasIndex("RoleId");
-
-                    b.HasIndex("Username")
-                        .IsUnique();
 
                     b.ToTable("Users");
                 });
@@ -488,17 +472,17 @@ namespace Pm.Migrations
                 {
                     b.HasOne("Pm.Models.User", "CreatedByUser")
                         .WithMany()
-                        .HasForeignKey("CreatedByUserUserId")
+                        .HasForeignKey("CreatedBy")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Pm.Models.User", "DeletedByUser")
                         .WithMany()
-                        .HasForeignKey("DeletedByUserUserId");
+                        .HasForeignKey("DeletedBy");
 
                     b.HasOne("Pm.Models.User", "UpdatedByUser")
                         .WithMany()
-                        .HasForeignKey("UpdatedByUserUserId");
+                        .HasForeignKey("UpdatedBy");
 
                     b.Navigation("CreatedByUser");
 

@@ -68,9 +68,6 @@ namespace Pm.Services
 
             if (user == null) return null;
 
-            user.LastLogin = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
             var dto = MapToDto(user);
 
             // Add permissions from role
@@ -130,7 +127,8 @@ namespace Pm.Services
                 Email = dto.Email,
                 RoleId = dto.RoleId ?? 3, // Default to User role (RoleId = 3)
                 IsActive = false,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
             _context.Users.Add(user);

@@ -38,7 +38,16 @@ namespace Pm.Controllers
         {
             // ✅ SELALU set IncludeDeleted = false untuk active data
             query.IncludeDeleted = false;
+            
+            _logger.LogInformation("📊 GetAll request - Page: {Page}, PageSize: {PageSize}, IncludeDeleted: {IncludeDeleted}",
+                query.Page, query.PageSize, query.IncludeDeleted);
+            
             var result = await _service.GetAllAsync(query);
+            
+            // ✅ DEBUG LOG - VERIFY RESPONSE STRUCTURE
+            _logger.LogInformation("📊 GetAll response - TotalCount: {TotalCount}, DataLength: {DataLength}, Page: {Page}, TotalPages: {TotalPages}",
+                result.TotalCount, result.Data.Count, result.Page, result.TotalPages);
+            
             return Ok(result);
         }
 
@@ -123,36 +132,27 @@ namespace Pm.Controllers
             _logger.LogInformation("🔄 Update request for ID: {Id}", id);
             _logger.LogInformation("📁 Files received: {Count}", dto.FotoHasilFiles?.Count ?? 0);
 
-            // ✅ SERVICE RETURN DTO LANGSUNG
+            // ✅ ENHANCED DEBUG LOGGING
+            _logger.LogInformation("📊 Received DTO values - " +
+                "NoFollowUp: '{NoFollowUp}', " +
+                "PicPelaksana: '{PicPelaksana}', " +
+                "PerbaikanDilakukan: '{PerbaikanDilakukan}', " +
+                "Keterangan: '{Keterangan}', " +
+                "TanggalPerbaikan: {TanggalPerbaikan}, " +
+                "TanggalSelesaiPerbaikan: {TanggalSelesaiPerbaikan}, " +
+                "Status: {Status}",
+                dto.NoFollowUp ?? "NULL",
+                dto.PicPelaksana ?? "NULL", 
+                dto.PerbaikanDilakukan ?? "NULL",
+                dto.Keterangan ?? "NULL",
+                dto.TanggalPerbaikan?.ToString("yyyy-MM-dd") ?? "NULL",
+                dto.TanggalSelesaiPerbaikan?.ToString("yyyy-MM-dd") ?? "NULL",
+                dto.Status ?? "NULL");
+
             var updatedDto = await _service.UpdateAsync(id, dto, _userId);
             if (updatedDto == null) return NotFound("Data tidak ditemukan atau sudah dihapus");
 
-            // Kirim email kalau status jadi "Closed" (opsional)
-            if (dto.Status?.Equals("Closed", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                if (!string.IsNullOrEmpty(dto.PicPelaksana))
-                {
-                    try
-                    {
-                        await _emailService.SendStatusClosedEmailAsync(
-                            temuanId: id,
-                            ruang: updatedDto.Ruang,
-                            picEmail: dto.PicPelaksana
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning("⚠️ Email send failed: {Message}", ex.Message);
-                    }
-                }
-            }
-
-            // ✅ RETURN RESPONSE YANG CONSISTENT
-            return Ok(new
-            {
-                message = "Temuan berhasil diperbarui",
-                data = updatedDto
-            });
+            return Ok(updatedDto);
         }
 
         // DELETE: api/inspeksi-temuan-kpc/5
@@ -164,6 +164,79 @@ namespace Pm.Controllers
             if (!success) return NotFound("Data tidak ditemukan");
             return Ok(new { message = "Temuan dipindah ke history" });
         }
+
+        [Authorize(Policy = "InspeksiTemuanKpcDelete")] // Same policy as delete
+        [HttpDelete("{id}/permanent")]
+        public async Task<IActionResult> DeletePermanent(int id)
+        {
+            try
+            {
+                var success = await _service.DeletePermanentAsync(id, _userId);
+                if (!success) return NotFound("Data tidak ditemukan atau belum dipindahkan ke history");
+                return Ok(new { message = "Temuan dihapus permanen dari database" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting permanent for ID: {Id}", id);
+                return StatusCode(500, new { message = "Terjadi kesalahan saat menghapus data permanen" });
+            }
+        }
+
+        [Authorize(Policy = "InspeksiTemuanKpcUpdate")]
+        [HttpDelete("{id}/foto-temuan/{index}")]
+        public async Task<IActionResult> DeleteFotoTemuan(int id, int index)
+        {
+            try
+            {
+                _logger.LogInformation("🗑️ Delete foto temuan request - ID: {Id}, Index: {Index}", id, index);
+                
+                // Get the entity first to check ownership
+                var entity = await _service.GetByIdAsync(id);
+                if (entity == null) return NotFound("Data tidak ditemukan");
+
+                // Since we don't have direct access to service context, we need to modify the service
+                // For now, we'll create a simple implementation
+                var success = await _service.DeleteFotoAsync(id, index, "temuan", _userId);
+                if (!success) return BadRequest("Gagal menghapus foto temuan");
+
+                return Ok(new { message = "Foto temuan berhasil dihapus" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error deleting foto temuan for ID: {Id}, Index: {Index}", id, index);
+                return StatusCode(500, new { message = "Terjadi kesalahan saat menghapus foto temuan" });
+            }
+        }
+
+        // DELETE: api/inspeksi-temuan-kpc/5/foto-hasil/0
+        [Authorize(Policy = "InspeksiTemuanKpcUpdate")]
+        [HttpDelete("{id}/foto-hasil/{index}")]
+        public async Task<IActionResult> DeleteFotoHasil(int id, int index)
+        {
+            try
+            {
+                _logger.LogInformation("🗑️ Delete foto hasil request - ID: {Id}, Index: {Index}", id, index);
+                
+                // Get the entity first to check ownership
+                var entity = await _service.GetByIdAsync(id);
+                if (entity == null) return NotFound("Data tidak ditemukan");
+
+                var success = await _service.DeleteFotoAsync(id, index, "hasil", _userId);
+                if (!success) return BadRequest("Gagal menghapus foto hasil");
+
+                return Ok(new { message = "Foto hasil berhasil dihapus" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error deleting foto hasil for ID: {Id}, Index: {Index}", id, index);
+                return StatusCode(500, new { message = "Terjadi kesalahan saat menghapus foto hasil" });
+            }
+        }
+        
 
         // PATCH: api/inspeksi-temuan-kpc/5/restore
         [Authorize(Policy = "InspeksiTemuanKpcRestore")]

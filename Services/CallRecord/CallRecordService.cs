@@ -299,7 +299,7 @@ namespace Pm.Services
                         
                         // Format time dengan handling yang lebih robust
                         var time = "000000"; // default value
-                        if (record.CallTime != null)
+                        if (record.CallTime != default(TimeSpan))
                         {
                             try
                             {

@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "/home/jupri/DATA D/MKN/pm/Pm.csproj": {}
+    "D:\\C#\\PM\\Pm\\Pm.csproj": {}
   },
   "projects": {
-    "/home/jupri/DATA D/MKN/pm/Pm.csproj": {
+    "D:\\C#\\PM\\Pm\\Pm.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/jupri/DATA D/MKN/pm/Pm.csproj",
+        "projectUniqueName": "D:\\C#\\PM\\Pm\\Pm.csproj",
         "projectName": "Pm",
-        "projectPath": "/home/jupri/DATA D/MKN/pm/Pm.csproj",
-        "packagesPath": "/home/jupri/.nuget/packages/",
-        "outputPath": "/home/jupri/DATA D/MKN/pm/obj/",
+        "projectPath": "D:\\C#\\PM\\Pm\\Pm.csproj",
+        "packagesPath": "C:\\Users\\jupri.eka\\.nuget\\packages\\",
+        "outputPath": "D:\\C#\\PM\\Pm\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/jupri/.nuget/NuGet/NuGet.Config"
+          "C:\\Users\\jupri.eka\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -127,7 +127,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/home/jupri/.local/share/mise/installs/dotnet/8.0.404/sdk/8.0.404/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.414/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

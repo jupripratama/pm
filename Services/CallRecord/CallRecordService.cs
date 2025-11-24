@@ -13,11 +13,17 @@ namespace Pm.Services
     {
         private readonly AppDbContext _context;
         private readonly ILogger<CallRecordService> _logger;
+        private readonly IServiceProvider _serviceProvider; // ✅ TAMBAH INI
 
-        public CallRecordService(AppDbContext context, ILogger<CallRecordService> logger)
+        // ✅ UPDATE CONSTRUCTOR
+        public CallRecordService(
+            AppDbContext context, 
+            ILogger<CallRecordService> logger,
+            IServiceProvider serviceProvider) // ✅ TAMBAH PARAMETER
         {
             _context = context;
             _logger = logger;
+            _serviceProvider = serviceProvider; // ✅ SIMPAN REFERENCE
         }
 
         public async Task<UploadCsvResponseDto> ImportCsvAsync(Stream csvStream, string fileName)
@@ -88,6 +94,7 @@ namespace Pm.Services
                 {
                     var insertStart = stopwatch.ElapsedMilliseconds;
                     
+                    // ✅ INSERT DATA (synchronous - tunggu sampai selesai)
                     await BulkInsertOptimizedAsync(records);
                     await BulkInsertFleetStatisticsAsync(fleetStatsDict.Values.ToList());
                     
@@ -116,21 +123,10 @@ namespace Pm.Services
                     await _context.SaveChangesAsync();
                 }
 
-                _ = Task.Run(async () =>
-                {
-                    try 
-                    {
-                        var dates = records.Select(r => r.CallDate.Date).Distinct();
-                        foreach (var date in dates)
-                        {
-                            await GenerateDailySummaryAsync(date);
-                        }
-                    }
-                    catch (Exception ex) 
-                    { 
-                        _logger.LogError(ex, "Summary generation error"); 
-                    }
-                });
+                // ✅ PERBAIKAN: Generate summary dengan proper scope management
+                // TIDAK pakai Task.Run yang fire-and-forget!
+                var uniqueDates = records.Select(r => r.CallDate.Date).Distinct().ToList();
+                await GenerateSummariesForMultipleDatesAsync(uniqueDates);
 
                 return response;
             }
@@ -154,68 +150,144 @@ namespace Pm.Services
             }
         }
 
+        // ✅ NEW METHOD: Generate summaries dengan proper scope
+        private async Task GenerateSummariesForMultipleDatesAsync(List<DateTime> dates)
+        {
+            _logger.LogInformation("📊 Starting summary generation for {Count} dates", dates.Count);
+            var summaryStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            foreach (var date in dates)
+            {
+                try
+                {
+                    // ✅ Create new scope untuk setiap date
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    
+                    await GenerateDailySummaryInternalAsync(scopedContext, date);
+                    
+                    _logger.LogInformation("✅ Summary generated for {Date}", date.ToString("yyyy-MM-dd"));
+                }
+                catch (Exception ex)
+                {
+                    // Log error tapi continue processing dates lain
+                    _logger.LogError(ex, "❌ Failed to generate summary for {Date}", date.ToString("yyyy-MM-dd"));
+                }
+            }
+
+            summaryStopwatch.Stop();
+            _logger.LogInformation("📊 Summary generation completed in {Ms}ms", summaryStopwatch.ElapsedMilliseconds);
+        }
+
+        // ✅ INTERNAL METHOD yang terima DbContext dari luar
+        private async Task GenerateDailySummaryInternalAsync(AppDbContext context, DateTime date)
+        {
+            // Delete existing summaries
+            var existingSummaries = await context.CallSummaries
+                .Where(cs => cs.SummaryDate.Date == date.Date)
+                .ToListAsync();
+
+            if (existingSummaries.Any())
+                context.CallSummaries.RemoveRange(existingSummaries);
+
+            var newSummaries = new List<CallSummary>();
+
+            for (int hour = 0; hour < 24; hour++)
+            {
+                var callsInHour = await context.CallRecords
+                    .Where(cr => cr.CallDate.Date == date.Date && cr.CallTime.Hours == hour)
+                    .ToListAsync();
+
+                var teBusyCount = callsInHour.Count(cr => cr.CallCloseReason == 0);
+                var sysBusyCount = callsInHour.Count(cr => cr.CallCloseReason == 1);
+                var othersCount = callsInHour.Count(cr => cr.CallCloseReason >= 2);
+                var totalQty = callsInHour.Count;
+
+                var summary = new CallSummary
+                {
+                    SummaryDate = date.Date,
+                    HourGroup = hour,
+                    TotalQty = totalQty,
+                    TEBusyCount = teBusyCount,
+                    SysBusyCount = sysBusyCount,
+                    OthersCount = othersCount,
+                    TEBusyPercent = totalQty > 0 ? Math.Round((decimal)teBusyCount / totalQty * 100, 2) : 0,
+                    SysBusyPercent = totalQty > 0 ? Math.Round((decimal)sysBusyCount / totalQty * 100, 2) : 0,
+                    OthersPercent = totalQty > 0 ? Math.Round((decimal)othersCount / totalQty * 100, 2) : 0,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                newSummaries.Add(summary);
+            }
+
+            await context.CallSummaries.AddRangeAsync(newSummaries);
+            await context.SaveChangesAsync();
+
+            _logger.LogInformation("Generated daily summary for {Date}", date.Date);
+        }
+
         private (CallRecord? record, string? callerFleet, string? calledFleet, int duration) ParseCsvRowWithFleetData(string line, int rowNumber)
         {
-        if (string.IsNullOrWhiteSpace(line)) 
-            return (null, null, null, 0);
-        
-        try
-        {
-            if (line.StartsWith('"') && line.EndsWith('"'))
-                line = line.Substring(1, line.Length - 2);
-
-            var parts = line.Split(',');
-            if (parts.Length < 14)
+            if (string.IsNullOrWhiteSpace(line)) 
                 return (null, null, null, 0);
-
-            // Parse date dari kolom 0
-            var dateStr = parts[0].Trim();
-            if (dateStr.Length != 8 || !int.TryParse(dateStr, out int dateInt))
-                return (null, null, null, 0);
-                
-            var year = dateInt / 10000;
-            var month = (dateInt / 100) % 100;
-            var day = dateInt % 100;
             
-            if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31)
-                return (null, null, null, 0);
-                
-            var callDate = new DateTime(year, month, day);
-
-            // Parse time dari kolom 1
-            if (!TimeSpan.TryParse(parts[1].Trim(), out var callTime))
-                return (null, null, null, 0);
-
-            // Parse CALLED FLEET dari kolom 4
-            var calledFleet = parts[4].Trim();
-            
-            // Parse CALLER FLEET dari kolom 6
-            var callerFleet = parts[6].Trim();
-
-            // Parse ON AIR DURATION dari kolom 13
-            var durationStr = parts[13].Trim();
-            if (!int.TryParse(durationStr, out int duration))
-                duration = 0;
-
-            // Parse close reason
-            var reasonStr = parts.Length > 15 ? parts[parts.Length - 2].Trim() : "0";
-            if (!int.TryParse(reasonStr, out int callCloseReason))
-                callCloseReason = 0;
-
-            var record = new CallRecord
+            try
             {
-                CallDate = callDate,
-                CallTime = callTime,
-                CallCloseReason = callCloseReason,
-                CreatedAt = DateTime.UtcNow
-            };
+                if (line.StartsWith('"') && line.EndsWith('"'))
+                    line = line.Substring(1, line.Length - 2);
 
-            return (record, callerFleet, calledFleet, duration);
-        }
-        catch
-        {
-            return (null, null, null, 0);
-        }
+                var parts = line.Split(',');
+                if (parts.Length < 14)
+                    return (null, null, null, 0);
+
+                // Parse date dari kolom 0
+                var dateStr = parts[0].Trim();
+                if (dateStr.Length != 8 || !int.TryParse(dateStr, out int dateInt))
+                    return (null, null, null, 0);
+                    
+                var year = dateInt / 10000;
+                var month = (dateInt / 100) % 100;
+                var day = dateInt % 100;
+                
+                if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31)
+                    return (null, null, null, 0);
+                    
+                var callDate = new DateTime(year, month, day);
+
+                // Parse time dari kolom 1
+                if (!TimeSpan.TryParse(parts[1].Trim(), out var callTime))
+                    return (null, null, null, 0);
+
+                // Parse CALLED FLEET dari kolom 4
+                var calledFleet = parts[4].Trim();
+                
+                // Parse CALLER FLEET dari kolom 6
+                var callerFleet = parts[6].Trim();
+
+                // Parse ON AIR DURATION dari kolom 13
+                var durationStr = parts[13].Trim();
+                if (!int.TryParse(durationStr, out int duration))
+                    duration = 0;
+
+                // Parse close reason
+                var reasonStr = parts.Length > 15 ? parts[parts.Length - 2].Trim() : "0";
+                if (!int.TryParse(reasonStr, out int callCloseReason))
+                    callCloseReason = 0;
+
+                var record = new CallRecord
+                {
+                    CallDate = callDate,
+                    CallTime = callTime,
+                    CallCloseReason = callCloseReason,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                return (record, callerFleet, calledFleet, duration);
+            }
+            catch
+            {
+                return (null, null, null, 0);
+            }
         }
 
         private async Task BulkInsertOptimizedAsync(List<CallRecord> records)
@@ -252,7 +324,6 @@ namespace Pm.Services
                     if (i > 0) values.Append(",");
                     
                     var baseIndex = i * 4;
-                    // YANG INI - sederhana tanpa casting
                     values.Append($"(@p{baseIndex},@p{baseIndex+1},@p{baseIndex+2},@p{baseIndex+3})");
                     
                     parameters.Add(r.CallDate);
@@ -294,19 +365,14 @@ namespace Pm.Services
                 {
                     try
                     {
-                        // Format date dengan handling error
                         var date = record.CallDate.ToString("yyyyMMdd");
                         
-                        // Format time dengan handling yang lebih robust
-                        var time = "000000"; // default value
-                        if (record.CallTime != null)
+                        var time = "000000";
+                        if (record.CallTime != default(TimeSpan))
                         {
                             try
                             {
-                                // Beberapa cara format TimeSpan yang aman
                                 time = record.CallTime.ToString(@"hh\:mm\:ss").Replace(":", "");
-                                // Atau alternatif:
-                                // time = $"{(int)record.CallTime.TotalHours:D2}{record.CallTime.Minutes:D2}{record.CallTime.Seconds:D2}";
                             }
                             catch (FormatException fmtEx)
                             {
@@ -315,7 +381,6 @@ namespace Pm.Services
                             }
                         }
 
-                        // Handle CallCloseReason yang null
                         var closeReason = record.CallCloseReason.ToString();
 
                         csv.AppendLine($"{date};{time};{closeReason}");
@@ -323,7 +388,6 @@ namespace Pm.Services
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Error formatting record {RecordId} for CSV export", record.CallRecordId);
-                        // Skip record yang error atau gunakan default values
                         var date = record.CallDate.ToString("yyyyMMdd");
                         var time = "000000";
                         var closeReason = record.CallCloseReason.ToString();
@@ -345,7 +409,6 @@ namespace Pm.Services
         {
             var dbQuery = _context.CallRecords.AsQueryable();
 
-            // Apply filters
             if (query.StartDate.HasValue)
                 dbQuery = dbQuery.Where(cr => cr.CallDate >= query.StartDate.Value.Date);
 
@@ -373,7 +436,6 @@ namespace Pm.Services
                 }
             }
 
-            // Apply sorting
             var sortDir = query.SortDir?.ToLower() ?? "desc";
             dbQuery = (query.SortBy?.ToLower()) switch
             {
@@ -434,7 +496,11 @@ namespace Pm.Services
 
             if (!summaries.Any())
             {
-                await GenerateDailySummaryAsync(date);
+                // ✅ Generate dengan proper scope
+                using var scope = _serviceProvider.CreateScope();
+                var scopedContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await GenerateDailySummaryInternalAsync(scopedContext, date);
+                
                 summaries = await _context.CallSummaries
                     .Where(cs => cs.SummaryDate.Date == date.Date)
                     .OrderBy(cs => cs.HourGroup)
@@ -453,7 +519,6 @@ namespace Pm.Services
                 SysBusyPercent = s.SysBusyPercent,
                 Others = s.OthersCount,
                 OthersPercent = s.OthersPercent,
-                 // ✅ TAMBAHAN
                 TEBusyDescription = s.GetTEBusyDescription(),
                 SysBusyDescription = s.GetSysBusyDescription(),
                 OthersDescription = s.GetOthersDescription()
@@ -512,52 +577,6 @@ namespace Pm.Services
             return overallSummary;
         }
 
-        private async Task GenerateDailySummaryAsync(DateTime date)
-        {
-            // Delete existing summaries
-            var existingSummaries = await _context.CallSummaries
-                .Where(cs => cs.SummaryDate.Date == date.Date)
-                .ToListAsync();
-
-            if (existingSummaries.Any())
-                _context.CallSummaries.RemoveRange(existingSummaries);
-
-            var newSummaries = new List<CallSummary>();
-
-            for (int hour = 0; hour < 24; hour++)
-            {
-                var callsInHour = await _context.CallRecords
-                    .Where(cr => cr.CallDate.Date == date.Date && cr.CallTime.Hours == hour)
-                    .ToListAsync();
-
-                var teBusyCount = callsInHour.Count(cr => cr.CallCloseReason == 0);
-                var sysBusyCount = callsInHour.Count(cr => cr.CallCloseReason == 1);
-                var othersCount = callsInHour.Count(cr => cr.CallCloseReason >= 2);
-                var totalQty = callsInHour.Count;
-
-                var summary = new CallSummary
-                {
-                    SummaryDate = date.Date, // ✅ SUDAH BENAR - pastikan selalu .Date
-                    HourGroup = hour,
-                    TotalQty = totalQty,
-                    TEBusyCount = teBusyCount,
-                    SysBusyCount = sysBusyCount,
-                    OthersCount = othersCount,
-                    TEBusyPercent = totalQty > 0 ? Math.Round((decimal)teBusyCount / totalQty * 100, 2) : 0,
-                    SysBusyPercent = totalQty > 0 ? Math.Round((decimal)sysBusyCount / totalQty * 100, 2) : 0,
-                    OthersPercent = totalQty > 0 ? Math.Round((decimal)othersCount / totalQty * 100, 2) : 0,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                newSummaries.Add(summary);
-            }
-
-            await _context.CallSummaries.AddRangeAsync(newSummaries);
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Generated daily summary for {Date}", date.Date);
-        }
-
         public async Task<bool> RegenerateSummariesAsync(DateTime startDate, DateTime endDate)
         {
             try
@@ -565,7 +584,11 @@ namespace Pm.Services
                 var currentDate = startDate.Date;
                 while (currentDate <= endDate.Date)
                 {
-                    await GenerateDailySummaryAsync(currentDate);
+                    // ✅ Generate dengan proper scope
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    await GenerateDailySummaryInternalAsync(scopedContext, currentDate);
+                    
                     currentDate = currentDate.AddDays(1);
                 }
 
@@ -588,7 +611,6 @@ namespace Pm.Services
                 _logger.LogInformation("🗑️ Starting delete operation for date: {Date}", date.ToString("yyyy-MM-dd"));
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                // DELETE dalam transaction tunggal
                 var callRecordsDeleted = await _context.Database.ExecuteSqlRawAsync(
                     "DELETE FROM CallRecords WHERE CallDate = {0}", 
                     date.Date
@@ -630,14 +652,13 @@ namespace Pm.Services
         {
             try
             {
-                // Cek apakah file sudah pernah diimport (berdasarkan nama file)
                 return await _context.FileImportHistories
                     .AnyAsync(f => f.FileName == fileName && f.Status == "Completed");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error checking if file is already imported: {FileName}", fileName);
-                return false; // Return false jika ada error, biarkan proses continue
+                return false;
             }
         }
 
@@ -650,7 +671,6 @@ namespace Pm.Services
                 _logger.LogWarning("🗑️ Starting database reset...");
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                // Truncate tables (paling cepat)
                 await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE CallSummaries");
                 await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE CallRecords");
                 await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE FileImportHistories");
@@ -695,7 +715,6 @@ namespace Pm.Services
                 List<TopCallerFleetDto> topCallers = new();
                 List<TopCalledFleetDto> topCalledFleets = new();
 
-                // Hitung Top Callers (jika diminta)
                 if (selectedType == FleetStatisticType.All || selectedType == FleetStatisticType.Caller)
                 {
                     topCallers = fleetStats
@@ -721,7 +740,6 @@ namespace Pm.Services
                         .ToList();
                 }
 
-                // Hitung Top Called Fleets (jika diminta)
                 if (selectedType == FleetStatisticType.All || selectedType == FleetStatisticType.Called)
                 {
                     topCalledFleets = fleetStats
@@ -838,7 +856,5 @@ namespace Pm.Services
             else
                 return $"{secs}s";
         }
-    
-        
     }
 }

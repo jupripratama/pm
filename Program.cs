@@ -16,6 +16,11 @@ using Pm.DTOs.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")))
+{
+    Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Production");
+}
+
 // ===== EPPlus License =====
 ExcelPackage.License.SetNonCommercialOrganization("MKN");
 
@@ -64,7 +69,10 @@ builder.Services.AddSwaggerGen(c =>
 // ===== Database Context =====
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    // Priority: Environment Variable > appsettings.json
+    var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") 
+                            ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    
     if (string.IsNullOrEmpty(connectionString))
         throw new InvalidOperationException("Connection string tidak ditemukan.");
 
@@ -74,8 +82,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         mySqlOptions =>
         {
             mySqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 2,
-                maxRetryDelay: TimeSpan.FromSeconds(3),
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
                 errorNumbersToAdd: null
             );
             mySqlOptions.CommandTimeout(180);
@@ -87,11 +95,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         options.EnableSensitiveDataLogging();
         options.EnableDetailedErrors();
     }
-}); 
+});
 
 // ===== JWT Authentication =====
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan.");
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") 
+            ?? jwtSettings["SecretKey"] 
+            ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan.");
 var key = Encoding.ASCII.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
@@ -201,7 +211,18 @@ else
 }
 
 app.UseMiddleware<ErrorHandlingMiddleware>();
-app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();

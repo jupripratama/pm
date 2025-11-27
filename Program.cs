@@ -31,7 +31,17 @@ Environment.SetEnvironmentVariable("TZ", "UTC");
 // ===== Add Controllers =====
 builder.Services.AddControllers(options =>
 {
+    // ✅ Register ResponseWrapperFilter globally
     options.Filters.Add<ResponseWrapperFilter>();
+})
+.AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    
+    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+    
+    // ✅ OPTIONAL: Ignore null values for cleaner response
+    options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
 });
 
 // ===== Swagger =====
@@ -102,6 +112,14 @@ var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") 
             ?? jwtSettings["SecretKey"] 
             ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan.");
+
+
+var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") 
+            ?? jwtSettings["Issuer"];
+            
+var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") 
+            ?? jwtSettings["Audience"];
+
 var key = Encoding.ASCII.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
@@ -116,7 +134,7 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ValidateIssuer = true,
         ValidIssuer = jwtSettings["Issuer"],
         ValidateAudience = true,
@@ -223,11 +241,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors("AllowFrontend");
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-
 // ===== SEEDING (Development Only) =====
 if (app.Environment.IsDevelopment())
 {
@@ -250,5 +263,11 @@ if (app.Environment.IsDevelopment())
         logger.LogError(ex, "❌ Seeding failed.");
     }
 }
+
+app.UseMiddleware<ErrorHandlingMiddleware>();
+app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
 
 app.Run();

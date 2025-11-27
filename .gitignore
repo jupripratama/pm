@@ -1,7 +1,24 @@
-# .NET build files
-bin/
-obj/
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+publish/
 
-# Konfigurasi rahasia
+## User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Sensitive data - JANGAN di-commit!
 appsettings.Development.json
 appsettings.Production.json
+*.tar.gz
+*.zip
+
+## VS Code
+.vscode/
+.vs/

@@ -1,4 +1,3 @@
-// Controllers/AuthController.cs - FIXED REGISTER ENDPOINT
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -6,6 +5,7 @@ using Pm.DTOs.Auth;
 using Pm.Services;
 using Pm.DTOs;
 using FluentValidation;
+using Pm.Helper;
 
 namespace Pm.Controllers
 {
@@ -44,7 +44,6 @@ namespace Pm.Controllers
                 _logger.LogInformation("📝 Register attempt - Username: {Username}, Email: {Email}",
                     dto.Username, dto.Email);
 
-                // ✅ VALIDASI MENGGUNAKAN FLUENTVALIDATION
                 var validationResult = await _registerValidator.ValidateAsync(dto);
                 if (!validationResult.IsValid)
                 {
@@ -57,85 +56,47 @@ namespace Pm.Controllers
                             g => g.Select(e => e.ErrorMessage).ToArray()
                         );
 
-                    return BadRequest(new
-                    {
-                        statusCode = StatusCodes.Status400BadRequest,
-                        message = "Validation failed",
-                        data = errors,
-                        meta = (object?)null
-                    });
+                    return BadRequest(new { data = errors });
                 }
 
-                // ✅ CEK USERNAME DUPLICATE
                 if (await _userService.IsUsernameExistsAsync(dto.Username))
                 {
                     _logger.LogWarning("❌ Username already exists: {Username}", dto.Username);
-                    return BadRequest(new
-                    {
-                        statusCode = StatusCodes.Status400BadRequest,
-                        message = "Username sudah digunakan",
-                        data = new { username = new[] { "Username sudah digunakan" } },
-                        meta = (object?)null
-                    });
+                    return ApiResponse.BadRequest("username", "Username sudah digunakan");
                 }
 
-                // ✅ CEK EMAIL DUPLICATE
                 if (await _userService.IsEmailExistsAsync(dto.Email))
                 {
                     _logger.LogWarning("❌ Email already exists: {Email}", dto.Email);
-                    return BadRequest(new
-                    {
-                        statusCode = StatusCodes.Status400BadRequest,
-                        message = "Email sudah digunakan",
-                        data = new { email = new[] { "Email sudah digunakan" } },
-                        meta = (object?)null
-                    });
+                    return ApiResponse.BadRequest("email", "Email sudah digunakan");
                 }
 
-                // ✅ CREATE USER
                 var createUserDto = new CreateUserDto
                 {
                     Username = dto.Username.Trim(),
                     Password = dto.Password,
                     FullName = dto.FullName.Trim(),
                     Email = dto.Email.Trim(),
-                    RoleId = 3 // Default role: User
+                    RoleId = 3
                 };
 
                 var user = await _userService.CreateUserAsync(createUserDto);
                 if (user == null)
                 {
                     _logger.LogError("❌ Failed to create user");
-                    return BadRequest(new
-                    {
-                        statusCode = StatusCodes.Status400BadRequest,
-                        message = "Gagal membuat user",
-                        data = new { message = "Terjadi kesalahan saat membuat user" },
-                        meta = (object?)null
-                    });
+                    return ApiResponse.BadRequest("message", "Gagal membuat user");
                 }
 
                 _logger.LogInformation("✅ User registered successfully - ID: {UserId}, Username: {Username}",
                     user.UserId, user.Username);
 
-                return StatusCode(StatusCodes.Status201Created, new
-                {
-                    statusCode = StatusCodes.Status201Created,
-                    message = "Registrasi berhasil. Akun Anda menunggu aktivasi dari Admin.",
-                    data = user,
-                    meta = (object?)null
-                });
+                HttpContext.Items["message"] = "Registrasi berhasil. Akun Anda menunggu aktivasi dari Admin.";
+                return ApiResponse.Created(user);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ Error during registration");
-                return BadRequest(new
-                {
-                    statusCode = StatusCodes.Status400BadRequest,
-                    message = ex.Message,
-                    data = new { },
-                    meta = (object?)null
-                });
+                return ApiResponse.BadRequest("message", ex.Message);
             }
         }
 
@@ -150,29 +111,17 @@ namespace Pm.Controllers
         {
             if (!ModelState.IsValid)
             {
-                return BadRequest(ModelState);
+                return BadRequest(new { data = ModelState });
             }
 
             var result = await _authService.LoginAsync(dto);
             if (result == null)
             {
-                return Unauthorized(new
-                {
-                    statusCode = StatusCodes.Status401Unauthorized,
-                    message = "Username atau password salah, atau akun belum diaktivasi",
-                    data = new { },
-                    meta = (object?)null
-                });
+                return ApiResponse.Unauthorized();
             }
 
             HttpContext.Items["message"] = "Login berhasil";
-            return Ok(new
-            {
-                statusCode = StatusCodes.Status200OK,
-                message = "Login berhasil",
-                data = result,
-                meta = (object?)null
-            });
+            return ApiResponse.Success(result);
         }
 
         /// <summary>
@@ -187,19 +136,13 @@ namespace Pm.Controllers
         {
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    statusCode = StatusCodes.Status400BadRequest,
-                    message = "Data tidak valid",
-                    data = new { },
-                    meta = (object?)null
-                });
+                return BadRequest(new { data = ModelState });
             }
 
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(userIdClaim, out var userId))
             {
-                return Unauthorized();
+                return ApiResponse.Unauthorized();
             }
 
             try
@@ -207,36 +150,18 @@ namespace Pm.Controllers
                 var result = await _authService.ChangePasswordAsync(userId, dto);
                 if (!result)
                 {
-                    return BadRequest(new
-                    {
-                        statusCode = StatusCodes.Status400BadRequest,
-                        message = "Password lama tidak valid",
-                        data = new { },
-                        meta = (object?)null
-                    });
+                    return ApiResponse.BadRequest("message", "Password lama tidak valid");
                 }
 
-                return Ok(new
-                {
-                    statusCode = StatusCodes.Status200OK,
-                    message = "Password berhasil diubah",
-                    data = new { },
-                    meta = (object?)null
-                });
+                HttpContext.Items["message"] = "Password berhasil diubah";
+                return ApiResponse.Success(new { });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error changing password for user {UserId}", userId);
-                return BadRequest(new
-                {
-                    statusCode = StatusCodes.Status400BadRequest,
-                    message = ex.Message,
-                    data = new { },
-                    meta = (object?)null
-                });
+                return ApiResponse.BadRequest("message", ex.Message);
             }
         }
-
 
         /// <summary>
         /// Get current user profile
@@ -250,28 +175,17 @@ namespace Pm.Controllers
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(userIdClaim, out var userId))
             {
-                return Unauthorized();
+                return ApiResponse.Unauthorized();
             }
 
             var userDto = await _userService.GetUserByIdAsync(userId);
             if (userDto == null)
             {
-                return NotFound(new
-                {
-                    statusCode = 404,
-                    message = "User tidak ditemukan",
-                    data = new { },
-                    meta = (object?)null
-                });
+                return ApiResponse.NotFound("User tidak ditemukan");
             }
 
-            return Ok(new
-            {
-                statusCode = 200,
-                message = "Profile berhasil dimuat",
-                data = userDto,
-                meta = (object?)null
-            });
+            HttpContext.Items["message"] = "Profile berhasil dimuat";
+            return ApiResponse.Success(userDto);
         }
 
         /// <summary>
@@ -282,13 +196,8 @@ namespace Pm.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Logout()
         {
-            return Ok(new
-            {
-                statusCode = StatusCodes.Status200OK,
-                message = "Logout berhasil",
-                data = new { },
-                meta = (object?)null
-            });
+            HttpContext.Items["message"] = "Logout berhasil";
+            return ApiResponse.Success(new { });
         }
     }
 }

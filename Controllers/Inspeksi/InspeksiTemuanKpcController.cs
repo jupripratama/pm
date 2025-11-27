@@ -7,6 +7,7 @@ using Pm.DTOs;
 using Pm.Services;
 using System.Security.Claims;
 using Pm.DTOs.Common;
+using Pm.Helper;
 
 namespace Pm.Controllers
 {
@@ -44,11 +45,12 @@ namespace Pm.Controllers
             
             var result = await _service.GetAllAsync(query);
             
-            // ✅ DEBUG LOG - VERIFY RESPONSE STRUCTURE
+            // ✅ PERBAIKAN: Akses melalui Meta.Pagination
             _logger.LogInformation("📊 GetAll response - TotalCount: {TotalCount}, DataLength: {DataLength}, Page: {Page}, TotalPages: {TotalPages}",
-                result.TotalCount, result.Data.Count, result.Page, result.TotalPages);
+                result.Meta.Pagination.TotalCount, result.Data.Count, result.Meta.Pagination.Page, result.Meta.Pagination.TotalPages);
             
-            return Ok(result);
+            // ✅ RETURN langsung result, middleware akan handle wrapping
+            return ApiResponse.Success(result);
         }
 
         // GET: api/inspeksi-temuan-kpc/5
@@ -58,7 +60,7 @@ namespace Pm.Controllers
         {
             var result = await _service.GetByIdAsync(id);
             if (result == null) return NotFound("Data tidak ditemukan");
-            return Ok(result);
+            return ApiResponse.Success(result);
         }
 
         // GET: api/inspeksi-temuan-kpc/history
@@ -66,31 +68,11 @@ namespace Pm.Controllers
         [HttpGet("history")]
         public async Task<IActionResult> GetHistory([FromQuery] InspeksiTemuanKpcQueryDto query)
         {
-            // ✅ SET IncludeDeleted = true UNTUK MENDAPATKAN DATA DELETED
-            query.IncludeDeleted = true;
+            query.IsArchived = true; // hanya data yang di-delete
             var result = await _service.GetAllAsync(query);
-
-            // ✅ DEBUG: Log hasil sebelum dan sesudah filter
-            _logger.LogInformation("📊 HISTORY DEBUG - Total from service: {Total}, Data count: {DataCount}",
-                result.TotalCount, result.Data.Count);
-
-            // ✅ FILTER MANUAL: Hanya kembalikan data yang Status = "Archived"
-            var deletedItems = result.Data.Where(x => x.Status == "Archived").ToList();
-
-            _logger.LogInformation("📊 HISTORY DEBUG - After filter: {FilteredCount}", deletedItems.Count);
-
-            // ✅ DEBUG: List ID yang termasuk deleted
-            foreach (var item in deletedItems)
-            {
-                _logger.LogInformation("📋 Deleted Item - ID: {Id}, Status: {Status}", item.Id, item.Status);
-            }
-
-            return Ok(new PagedResultDto<InspeksiTemuanKpcDto>(
-                deletedItems,
-                query,
-                deletedItems.Count
-            ));
+            return ApiResponse.Success(result, "Data history berhasil dimuat");
         }
+
         // POST: api/inspeksi-temuan-kpc
         [Authorize(Policy = "InspeksiTemuanKpcCreate")]
         [HttpPost]
@@ -121,7 +103,10 @@ namespace Pm.Controllers
                 }
             }
 
-            return Ok(new { message = "Temuan berhasil dibuat", id });
+            return ApiResponse.Success(
+                data: new { id },
+                message: "Temuan berhasil dibuat"
+            );
         }
 
         // PATCH: Update
@@ -152,7 +137,10 @@ namespace Pm.Controllers
             var updatedDto = await _service.UpdateAsync(id, dto, _userId);
             if (updatedDto == null) return NotFound("Data tidak ditemukan atau sudah dihapus");
 
-            return Ok(updatedDto);
+            return ApiResponse.Success(
+                data: updatedDto,
+                message: "Temuan berhasil diperbarui"
+            );
         }
 
         // DELETE: api/inspeksi-temuan-kpc/5
@@ -162,7 +150,10 @@ namespace Pm.Controllers
         {
             var success = await _service.DeleteAsync(id, _userId);
             if (!success) return NotFound("Data tidak ditemukan");
-            return Ok(new { message = "Temuan dipindah ke history" });
+            return ApiResponse.Success(
+                data: new { deleted = true },
+                message: "Temuan berhasil dipindahkan ke history"
+            );
         }
 
         [Authorize(Policy = "InspeksiTemuanKpcDelete")] // Same policy as delete
@@ -173,7 +164,10 @@ namespace Pm.Controllers
             {
                 var success = await _service.DeletePermanentAsync(id, _userId);
                 if (!success) return NotFound("Data tidak ditemukan atau belum dipindahkan ke history");
-                return Ok(new { message = "Temuan dihapus permanen dari database" });
+                return ApiResponse.Success(
+                    data: new { deleted = true },
+                    message: "Temuan berhasil dihapus secara permanen"
+                );
             }
             catch (InvalidOperationException ex)
             {
@@ -203,7 +197,10 @@ namespace Pm.Controllers
                 var success = await _service.DeleteFotoAsync(id, index, "temuan", _userId);
                 if (!success) return BadRequest("Gagal menghapus foto temuan");
 
-                return Ok(new { message = "Foto temuan berhasil dihapus" });
+                return ApiResponse.Success(
+                    data: new { deleted = true },
+                    message: "Foto temuan berhasil dihapus"
+                );
             }
             catch (Exception ex)
             {
@@ -228,7 +225,10 @@ namespace Pm.Controllers
                 var success = await _service.DeleteFotoAsync(id, index, "hasil", _userId);
                 if (!success) return BadRequest("Gagal menghapus foto hasil");
 
-                return Ok(new { message = "Foto hasil berhasil dihapus" });
+                return ApiResponse.Success(
+                    data: new { deleted = true },
+                    message: "Foto hasil berhasil dihapus"
+                );
             }
             catch (Exception ex)
             {
@@ -245,7 +245,10 @@ namespace Pm.Controllers
         {
             var success = await _service.RestoreAsync(id, _userId);
             if (!success) return NotFound("Data tidak ditemukan atau belum dihapus");
-            return Ok(new { message = "Temuan dikembalikan" });
+            return ApiResponse.Success(
+                data: new { restored = true },
+                message: "Temuan berhasil dipulihkan dari history"
+            );
         }
 
         // GET: api/inspeksi-temuan-kpc/export

@@ -14,8 +14,8 @@ publish/
 *.sln.docstates
 
 ## Sensitive data - JANGAN di-commit!
-appsettings.Development.json
-appsettings.Production.json
+# appsettings.Development.json
+# appsettings.Production.json
 *.tar.gz
 *.zip
 

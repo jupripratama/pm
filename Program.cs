@@ -81,7 +81,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 {
     // Priority: Environment Variable > appsettings.json
     var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") 
-                            ?? builder.Configuration.GetConnectionString("DefaultConnection");
+                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
     
     if (string.IsNullOrEmpty(connectionString))
         throw new InvalidOperationException("Connection string tidak ditemukan.");
@@ -106,6 +106,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         options.EnableDetailedErrors();
     }
 });
+
+builder.WebHost.UseUrls("http://*:5116");
 
 // ===== JWT Authentication =====
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -269,5 +271,8 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+app.Logger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
+app.Logger.LogInformation("DB Connection String: {Conn}", builder.Configuration.GetConnectionString("DefaultConnection"));
 
 app.Run();

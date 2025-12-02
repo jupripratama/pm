@@ -403,3 +403,8 @@ D:\C#\PM\Pm\obj\Debug\net8.0\refint\Pm.dll
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.pdb
 D:\C#\PM\Pm\obj\Debug\net8.0\Pm.genruntimeconfig.cache
 D:\C#\PM\Pm\obj\Debug\net8.0\ref\Pm.dll
+d:\C#\PM\Pm\bin\Debug\net8.0\publish-sc\appsettings.Development.json
+d:\C#\PM\Pm\bin\Debug\net8.0\publish-sc\appsettings.json
+d:\C#\PM\Pm\bin\Debug\net8.0\publish-sc\appsettings.Production.json
+d:\C#\PM\Pm\bin\Debug\net8.0\publish-sc\Pm.deps.json
+d:\C#\PM\Pm\bin\Debug\net8.0\publish-sc\Pm.runtimeconfig.json

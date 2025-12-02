@@ -10,5 +10,7 @@ namespace Pm.DTOs
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public bool IncludeDeleted { get; set; } = false;
+
+        public bool? IsArchived { get; set; }
     }
 }

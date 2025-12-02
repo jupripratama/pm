@@ -16,6 +16,11 @@ using Pm.DTOs.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")))
+{
+    Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Production");
+}
+
 // ===== EPPlus License =====
 ExcelPackage.License.SetNonCommercialOrganization("MKN");
 
@@ -26,7 +31,17 @@ Environment.SetEnvironmentVariable("TZ", "UTC");
 // ===== Add Controllers =====
 builder.Services.AddControllers(options =>
 {
+    // ✅ Register ResponseWrapperFilter globally
     options.Filters.Add<ResponseWrapperFilter>();
+})
+.AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    
+    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+    
+    // ✅ OPTIONAL: Ignore null values for cleaner response
+    options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
 });
 
 // ===== Swagger =====
@@ -64,7 +79,10 @@ builder.Services.AddSwaggerGen(c =>
 // ===== Database Context =====
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    // Priority: Environment Variable > appsettings.json
+    var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") 
+                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    
     if (string.IsNullOrEmpty(connectionString))
         throw new InvalidOperationException("Connection string tidak ditemukan.");
 
@@ -74,8 +92,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         mySqlOptions =>
         {
             mySqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 2,
-                maxRetryDelay: TimeSpan.FromSeconds(3),
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
                 errorNumbersToAdd: null
             );
             mySqlOptions.CommandTimeout(180);
@@ -87,11 +105,23 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         options.EnableSensitiveDataLogging();
         options.EnableDetailedErrors();
     }
-}); 
+});
+
+builder.WebHost.UseUrls("http://*:5116");
 
 // ===== JWT Authentication =====
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan.");
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") 
+            ?? jwtSettings["SecretKey"] 
+            ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan.");
+
+
+var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") 
+            ?? jwtSettings["Issuer"];
+            
+var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") 
+            ?? jwtSettings["Audience"];
+
 var key = Encoding.ASCII.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
@@ -106,7 +136,7 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ValidateIssuer = true,
         ValidIssuer = jwtSettings["Issuer"],
         ValidateAudience = true,
@@ -161,7 +191,7 @@ builder.Services.AddCors(options =>
             "https://pmfrontend.vercel.app",
             "http://localhost:3000",
             "http://localhost:5173",
-            "https://pmfrontend-*.vercel.app",
+            "https://pmfrontend-git-*.vercel.app",
             "https://*.vercel.app"
         )
         .AllowAnyHeader()
@@ -201,11 +231,17 @@ else
 }
 
 app.UseMiddleware<ErrorHandlingMiddleware>();
-app.UseHttpsRedirection();
-app.UseCors("AllowFrontend");
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // ===== SEEDING (Development Only) =====
 if (app.Environment.IsDevelopment())
@@ -229,5 +265,14 @@ if (app.Environment.IsDevelopment())
         logger.LogError(ex, "❌ Seeding failed.");
     }
 }
+
+app.UseMiddleware<ErrorHandlingMiddleware>();
+app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Logger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
+app.Logger.LogInformation("DB Connection String: {Conn}", builder.Configuration.GetConnectionString("DefaultConnection"));
 
 app.Run();

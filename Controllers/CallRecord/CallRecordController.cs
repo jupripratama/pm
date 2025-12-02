@@ -15,27 +15,15 @@ namespace Pm.Controllers
         private readonly IExcelExportService _excelExportService;
         private readonly ILogger<CallRecordController> _logger;
 
-        public CallRecordController(ICallRecordService callRecordService,IExcelExportService excelExportService, ILogger<CallRecordController> logger)
+        public CallRecordController(
+            ICallRecordService callRecordService,
+            IExcelExportService excelExportService, 
+            ILogger<CallRecordController> logger)
         {
             _callRecordService = callRecordService;
             _excelExportService = excelExportService;
             _logger = logger;
         }
-
-        private static readonly Dictionary<string, ImportProgress> _importProgress = new();
-
-        public class ImportProgress
-        {
-            public string FileName { get; set; } = "";
-            public int TotalRows { get; set; }
-            public int ProcessedRows { get; set; }
-            public int SuccessfulRows { get; set; }
-            public int FailedRows { get; set; }
-            public DateTime StartTime { get; set; }
-            public bool IsCompleted { get; set; }
-        }
-
-
 
         /// <summary>
         /// Upload dan import file CSV call records
@@ -46,21 +34,20 @@ namespace Pm.Controllers
         public async Task<IActionResult> ImportCsv(IFormFile file)
         {
             if (file == null || file.Length == 0)
-                return BadRequest(new { message = "File tidak boleh kosong" });
+                return ApiResponse.BadRequest("file", "File tidak boleh kosong");
 
-            if (file.Length > 100 * 1024 * 1024) // 100MB max
-                return BadRequest(new { message = "Ukuran file maksimal 100MB" });
+            if (file.Length > 100 * 1024 * 1024)
+                return ApiResponse.BadRequest("file", "Ukuran file maksimal 100MB");
 
             var allowedExtensions = new[] { ".csv", ".txt" };
             var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!allowedExtensions.Contains(fileExtension))
-                return BadRequest(new { message = "Hanya file CSV dan TXT yang diizinkan" });
+                return ApiResponse.BadRequest("file", "Hanya file CSV dan TXT yang diizinkan");
 
-            // ✅ CEK APAKAH FILE SUDAH PERNAH DI IMPORT
             var isAlreadyImported = await _callRecordService.IsFileAlreadyImported(file.FileName);
             if (isAlreadyImported)
             {
-                return BadRequest(new { message = $"File '{file.FileName}' sudah pernah diimport sebelumnya" });
+                return ApiResponse.BadRequest("file", $"File '{file.FileName}' sudah pernah diimport sebelumnya");
             }
 
             var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -85,12 +72,13 @@ namespace Pm.Controllers
                 if (result.Errors.Any())
                     message += $". Errors: {string.Join("; ", result.Errors)}";
 
-                return Ok(new
-                {
-                    message,
-                    data = result,
-                    totalTimeMs = totalStopwatch.ElapsedMilliseconds
-                });
+                return ApiResponse.Success(
+                data: new { 
+                    records = result, // ganti nama biar jelas
+                    totalTimeMs = totalStopwatch.ElapsedMilliseconds 
+                },
+                message: message
+            );
             }
             catch (Exception ex)
             {
@@ -104,25 +92,19 @@ namespace Pm.Controllers
         /// </summary>
         [Authorize(Policy = "CanViewCallRecords")]
         [HttpGet]
-        public async Task<IActionResult> GetCallRecords([FromQuery] CallRecordQueryDto query)
+       public async Task<IActionResult> GetCallRecords([FromQuery] CallRecordQueryDto query)
         {
             try
             {
                 var result = await _callRecordService.GetCallRecordsAsync(query);
-
-                // Simpan message di HttpContext.Items untuk ResponseWrapperFilter
-                HttpContext.Items["message"] = "Data call records berhasil dimuat";
-
-                return Ok(new { data = result });
+                return ApiResponse.Success(result, "Data call records berhasil dimuat");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting call records");
                 return ApiResponse.InternalServerError($"Terjadi kesalahan saat mengambil data call records: {ex.Message}");
             }
-
         }
-
 
         /// <summary>
         /// Get daily summary untuk tanggal tertentu
@@ -137,10 +119,7 @@ namespace Pm.Controllers
             try
             {
                 var result = await _callRecordService.GetDailySummaryAsync(parsedDate);
-
-                HttpContext.Items["message"] = $"Summary harian untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dimuat";
-
-                return Ok(new { data = result });
+                return ApiResponse.Success(result, $"Summary harian untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dimuat");
             }
             catch (Exception ex)
             {
@@ -173,10 +152,7 @@ namespace Pm.Controllers
             try
             {
                 var result = await _callRecordService.GetOverallSummaryAsync(parsedStartDate, parsedEndDate);
-                
-                HttpContext.Items["message"] = $"Overall summary dari {parsedStartDate:yyyy-MM-dd} sampai {parsedEndDate:yyyy-MM-dd} berhasil dimuat";
-                
-                return Ok(new { data = result });
+                return ApiResponse.Success(result, $"Overall summary dari {parsedStartDate:yyyy-MM-dd} sampai {parsedEndDate:yyyy-MM-dd} berhasil dimuat");
             }
             catch (Exception ex)
             {
@@ -211,7 +187,7 @@ namespace Pm.Controllers
             }
         }
 
-        [Authorize(Policy = "CanExportCallRecordsExcel")] // Tambahkan authorize jika perlu
+        [Authorize(Policy = "CanExportCallRecordsExcel")]
         [HttpGet("export/overall-summary")]
         public async Task<IActionResult> ExportOverallSummaryToExcel(
             [FromQuery] string startDate,
@@ -232,8 +208,6 @@ namespace Pm.Controllers
             try
             {
                 var summary = await _callRecordService.GetOverallSummaryAsync(parsedStartDate, parsedEndDate);
-
-                // ✅ GUNAKAN METHOD BARU UNTUK MULTIPLE SHEETS
                 var excelBytes = await _excelExportService.ExportMultipleDailySummariesToExcelAsync(
                     parsedStartDate, parsedEndDate, summary);
 
@@ -253,9 +227,6 @@ namespace Pm.Controllers
         /// <summary>
         /// Download call records sebagai CSV file
         /// </summary>
-        /// <param name="startDate">Tanggal mulai (YYYY-MM-DD)</param>
-        /// <param name="endDate">Tanggal akhir (YYYY-MM-DD)</param>
-        /// <returns>CSV file download</returns>
         [Authorize(Policy = "CanExportCallRecordsCsv")]
         [HttpGet("export/csv")]
         public async Task<IActionResult> ExportCallRecordsToCsv(
@@ -279,7 +250,6 @@ namespace Pm.Controllers
                 var csvBytes = await _callRecordService.ExportCallRecordsToCsvAsync(parsedStartDate, parsedEndDate);
                 var fileName = $"CallRecords_{parsedStartDate:yyyyMMdd}_to_{parsedEndDate:yyyyMMdd}.csv";
 
-                // Untuk file download, return langsung FileResult (tidak melalui wrapper)
                 return File(csvBytes, "text/csv", fileName);
             }
             catch (Exception ex)
@@ -292,8 +262,6 @@ namespace Pm.Controllers
         /// <summary>
         /// Download call records untuk tanggal tertentu sebagai CSV
         /// </summary>
-        /// <param name="date">Tanggal (YYYY-MM-DD)</param>
-        /// <returns>CSV file download</returns>
         [Authorize(Policy = "CanExportCallRecordsCsv")]
         [HttpGet("export/csv/{date}")]
         public async Task<IActionResult> ExportDailyCallRecordsToCsv([FromRoute] string date)
@@ -306,7 +274,6 @@ namespace Pm.Controllers
                 var csvBytes = await _callRecordService.ExportCallRecordsToCsvAsync(parsedDate, parsedDate);
                 var fileName = $"CallRecords_{parsedDate:yyyyMMdd}.csv";
 
-                // Untuk file download, return langsung FileResult
                 return File(csvBytes, "text/csv", fileName);
             }
             catch (Exception ex)
@@ -332,8 +299,10 @@ namespace Pm.Controllers
 
                 if (success)
                 {
-                    HttpContext.Items["message"] = $"Call records untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dihapus";
-                    return Ok(new { data = new { deleted = true } });
+                    return ApiResponse.Success(
+                        data: new { deleted = true },
+                        message: $"Call records untuk tanggal {parsedDate:yyyy-MM-dd} berhasil dihapus"
+                    );
                 }
                 else
                 {
@@ -347,36 +316,29 @@ namespace Pm.Controllers
             }
         }
 
-        // Di CallRecordController.cs
-
         /// <summary>
         /// Reset semua data call records dan summaries (DANGER!)
         /// </summary>
-        [Authorize(Policy = "CanDeleteAllData")] // Pastikan hanya admin yang bisa akses
+        [Authorize(Policy = "CanDeleteAllData")]
         [HttpDelete("reset-all")]
         public async Task<IActionResult> ResetAllData([FromQuery] string confirmation)
         {
-            // Safety check
             if (confirmation != "DELETE_ALL_DATA")
             {
-                return BadRequest(new
-                {
-                    message = "Konfirmasi tidak valid. Gunakan query parameter: ?confirmation=DELETE_ALL_DATA"
-                });
+                return ApiResponse.BadRequest("confirmation", "Konfirmasi tidak valid. Gunakan query parameter: ?confirmation=DELETE_ALL_DATA");
             }
 
             try
             {
                 _logger.LogWarning("⚠️ RESET DATABASE - Deleting all call records and summaries");
-
                 await _callRecordService.ResetAllDataAsync();
 
-                HttpContext.Items["message"] = "Semua data call records dan summaries berhasil dihapus";
-                return Ok(new
-                {
-                    message = "Database berhasil direset",
-                    warning = "Semua data telah dihapus permanent"
-                });
+                return ApiResponse.Success(
+                    data: new {
+                        warning = "Semua data telah dihapus permanent"
+                    },
+                    message: "Semua data call records dan summaries berhasil dihapus"
+                );
             }
             catch (Exception ex)
             {
@@ -386,15 +348,11 @@ namespace Pm.Controllers
         }
 
         /// <summary>
-        /// Endpoint untuk mendapatkan Fleet Statistics (Top Caller dan/atau Top Called Fleet)
+        /// Endpoint untuk mendapatkan Fleet Statistics
         /// </summary>
-        /// <param name="date">Tanggal yang ingin dilihat (format: yyyy-MM-dd). Default: hari ini</param>
-        /// <param name="top">Jumlah top data yang ingin ditampilkan. Default: 10</param>
-        /// <param name="type">Filter tipe data: "caller" (Top Callers saja), "called" (Top Called Fleets saja), atau kosong/null (keduanya). Default: keduanya</param>
-        /// <returns>Fleet statistics sesuai filter</returns>
         [Authorize(Policy = "CanViewCallRecords")]
         [HttpGet("fleet-statistics")]
-       [ProducesResponseType(typeof(FleetStatisticsDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(FleetStatisticsDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -410,26 +368,14 @@ namespace Pm.Controllers
                 
                 if (top < 1 || top > 100)
                 {
-                    return BadRequest(new
-                    {
-                        statusCode = 400,
-                        message = "Bad Request",
-                        data = new { message = "Parameter 'top' harus antara 1 dan 100" },
-                        meta = (object?)null
-                    });
+                    return ApiResponse.BadRequest("top", "Parameter 'top' harus antara 1 dan 100");
                 }
 
                 var stats = await _callRecordService.GetFleetStatisticsAsync(targetDate, top, selectedType);
                 
                 if (stats.TopCallers.Count == 0 && stats.TopCalledFleets.Count == 0)
                 {
-                    return NotFound(new
-                    {
-                        statusCode = 404,
-                        message = "Not Found",
-                        data = new { message = $"Tidak ada data fleet statistics untuk tanggal {targetDate:yyyy-MM-dd}" },
-                        meta = (object?)null
-                    });
+                    return ApiResponse.NotFound($"Tidak ada data fleet statistics untuk tanggal {targetDate:yyyy-MM-dd}");
                 }
 
                 var message = selectedType switch
@@ -439,27 +385,12 @@ namespace Pm.Controllers
                     _ => "Fleet statistics berhasil dimuat"
                 };
 
-                return Ok(new
-                {
-                    statusCode = 200,
-                    message = "Success",
-                    data = stats,
-                    meta = new { 
-                        filter = selectedType.ToString(),
-                        description = message
-                    }
-                });
+                return ApiResponse.Success(stats, message);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting fleet statistics");
-                return BadRequest(new
-                {
-                    statusCode = 400,
-                    message = "Bad Request",
-                    data = new { message = ex.Message },
-                    meta = (object?)null
-                });
+                return ApiResponse.BadRequest("message", ex.Message);
             }
         }
     }

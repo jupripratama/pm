@@ -33,6 +33,20 @@ namespace Pm.Services
                 .Include(x => x.UpdatedByUser)
                 .AsQueryable();
 
+            if (query.IsArchived.HasValue)
+            {
+                if (query.IsArchived.Value)
+                {
+                    q = q.Where(x => x.IsDeleted); // hanya yang di-delete
+                }
+                else
+                {
+                    q = q.Where(x => !x.IsDeleted); // hanya yang aktif
+                }
+                // Override IncludeDeleted agar konsisten
+                query.IncludeDeleted = true;
+            }
+
             if (!query.IncludeDeleted)
             {
                 q = q.Where(x => !x.IsDeleted);
@@ -42,6 +56,7 @@ namespace Pm.Services
             {
                 _logger.LogInformation("🔍 Including deleted records");
             }
+            
 
             if (!string.IsNullOrEmpty(query.Ruang)) q = q.Where(x => x.Ruang.Contains(query.Ruang));
             if (!string.IsNullOrEmpty(query.Status)) q = q.Where(x => x.Status == query.Status);

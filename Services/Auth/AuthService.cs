@@ -21,9 +21,10 @@ namespace Pm.Services
 
         public async Task<LoginResponseDto?> LoginAsync(LoginDto dto)
         {
-            _logger.LogInformation("Login attempt for username: {Username}", dto.Username);
+            _logger.LogInformation("🔐 Login attempt for username: {Username}", dto.Username);
 
             var user = await _context.Users
+                .AsTracking()
                 .Include(u => u.Role)
                     .ThenInclude(r => r!.RolePermissions)
                     .ThenInclude(rp => rp.Permission)
@@ -31,13 +32,13 @@ namespace Pm.Services
 
             if (user == null)
             {
-                _logger.LogWarning("Login failed: User {Username} not found or inactive", dto.Username);
+                _logger.LogWarning("❌ Login failed: User {Username} not found or inactive", dto.Username);
                 return null;
             }
 
             if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
             {
-                _logger.LogWarning("Login failed: Invalid password for user {Username}", dto.Username);
+                _logger.LogWarning("❌ Login failed: Invalid password for user {Username}", dto.Username);
                 return null;
             }
 
@@ -50,10 +51,28 @@ namespace Pm.Services
             var token = _jwtService.GenerateToken(user, permissions);
             var expiresIn = _jwtService.GetTokenExpirationTime();
 
-            // Update last login
-            await UpdateLastLoginAsync(user.UserId);
-
-            _logger.LogInformation("Login successful for user {Username}", dto.Username);
+            // ✅ GUNAKAN DateTimeOffset untuk TRUE UTC
+            var trueUtcTime = DateTimeOffset.UtcNow.DateTime;
+            
+            _logger.LogInformation("🕐 Server Local Time: {Local}", DateTime.Now);
+            _logger.LogInformation("🕐 TRUE UTC Time: {Utc}", trueUtcTime);
+            _logger.LogInformation("🕐 Server Timezone: {Tz}", TimeZoneInfo.Local.Id);
+            
+            user.LastLogin = trueUtcTime;
+            user.UpdatedAt = trueUtcTime;
+            
+            _context.Entry(user).State = EntityState.Modified;
+            
+            try
+            {
+                var rowsAffected = await _context.SaveChangesAsync();
+                _logger.LogInformation("✅ LastLogin saved to DB - UTC: {LastLogin} (Rows: {Rows})", 
+                    user.LastLogin, rowsAffected);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to update LastLogin");
+            }
 
             return new LoginResponseDto
             {
@@ -65,11 +84,13 @@ namespace Pm.Services
                     Username = user.Username,
                     FullName = user.FullName,
                     Email = user.Email,
+                    PhotoUrl = user.PhotoUrl,
                     IsActive = user.IsActive,
                     RoleId = user.RoleId,
                     RoleName = user.Role?.RoleName,
                     LastLogin = user.LastLogin,
-                    CreatedAt = user.CreatedAt
+                    CreatedAt = user.CreatedAt,
+                    Permissions = permissions
                 },
                 Permissions = permissions
             };
@@ -77,36 +98,64 @@ namespace Pm.Services
 
         public async Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto dto)
         {
+            _logger.LogInformation("🔐 Change password attempt for user {UserId}", userId);
+
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
             {
-                _logger.LogWarning("Change password failed: User {UserId} not found", userId);
+                _logger.LogWarning("❌ Change password failed: User {UserId} not found", userId);
                 return false;
             }
 
-            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+            // Verify current password
+            var isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash);
+            _logger.LogInformation("🔐 Current password validation result: {IsValid}", isCurrentPasswordValid);
+
+            if (!isCurrentPasswordValid)
             {
-                _logger.LogWarning("Change password failed: Invalid current password for user {UserId}", userId);
+                _logger.LogWarning("❌ Change password failed: Invalid current password for user {UserId}", userId);
                 return false;
             }
 
-            // Validate strong password
-            if (!IsStrongPassword(dto.NewPassword))
+            // Validate new password strength
+            _logger.LogInformation("🔐 Validating new password strength...");
+            var isStrong = IsStrongPassword(dto.NewPassword);
+            _logger.LogInformation("🔐 New password strength validation result: {IsStrong}", isStrong);
+
+            if (!isStrong)
             {
+                _logger.LogWarning("❌ Change password failed: New password doesn't meet strength requirements for user {UserId}", userId);
                 throw new Exception("Password baru harus minimal 8 karakter dan mengandung huruf besar, huruf kecil, angka, dan simbol.");
             }
 
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            // Hash new password
+            var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+
+            // ⚠️ PERBAIKAN: Explicitly update the entity state
+            user.PasswordHash = newPasswordHash;
             user.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            // ⚠️ PERBAIKAN: Mark entity as modified
+            _context.Entry(user).State = EntityState.Modified;
 
-            _logger.LogInformation("Password changed successfully for user {UserId}", userId);
-            return true;
+            try
+            {
+                var rowsAffected = await _context.SaveChangesAsync();
+                _logger.LogInformation("✅ Password changed successfully for user {UserId}. Rows affected: {RowsAffected}", userId, rowsAffected);
+
+                // ⚠️ PERBAIKAN: Return true even if rowsAffected is 0, as long as no exception
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Database error while changing password for user {UserId}", userId);
+                throw new Exception("Gagal menyimpan password baru ke database.");
+            }
         }
 
         public async Task UpdateLastLoginAsync(int userId)
         {
+            
             var user = await _context.Users.FindAsync(userId);
             if (user != null)
             {

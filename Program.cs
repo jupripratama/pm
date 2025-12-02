@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -11,31 +10,54 @@ using Pm.Helper;
 using Pm.Middleware;
 using Pm.DTOs;
 using Pm.Validators;
+using OfficeOpenXml;
+using Microsoft.AspNetCore.Http.Features;
+using Pm.DTOs.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")))
+{
+    Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Production");
+}
+
+// ===== EPPlus License =====
+ExcelPackage.License.SetNonCommercialOrganization("MKN");
+
+// ✅ FORCE application timezone to UTC
+TimeZoneInfo.ClearCachedData();
+Environment.SetEnvironmentVariable("TZ", "UTC");
+
+// ===== Add Controllers =====
 builder.Services.AddControllers(options =>
 {
-    // Add the response wrapper filter globally
+    // ✅ Register ResponseWrapperFilter globally
     options.Filters.Add<ResponseWrapperFilter>();
+})
+.AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    
+    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+    
+    // ✅ OPTIONAL: Ignore null values for cleaner response
+    options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
 });
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// ===== Swagger =====
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = "Your Project API", 
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "PM MKN API",
         Version = "v1",
-        Description = "API Documentation for Your Project"
+        Description = "API PM & Documentation"
     });
 
-    // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Description = "Gunakan format: Bearer {token}",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -47,35 +69,59 @@ builder.Services.AddSwaggerGen(c =>
         {
             new OpenApiSecurityScheme
             {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
             },
             Array.Empty<string>()
         }
     });
+});
 
-    // Include XML comments if you have them
-    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
+// ===== Database Context =====
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    // Priority: Environment Variable > appsettings.json
+    var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") 
+                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    
+    if (string.IsNullOrEmpty(connectionString))
+        throw new InvalidOperationException("Connection string tidak ditemukan.");
+
+    options.UseMySql(
+        connectionString,
+        new MySqlServerVersion(new Version(8, 0, 0)),
+        mySqlOptions =>
+        {
+            mySqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorNumbersToAdd: null
+            );
+            mySqlOptions.CommandTimeout(180);
+        }
+    );
+
+    if (builder.Environment.IsDevelopment())
     {
-        c.IncludeXmlComments(xmlPath);
+        options.EnableSensitiveDataLogging();
+        options.EnableDetailedErrors();
     }
 });
 
-// Add Database Context
-builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
-});
+builder.WebHost.UseUrls("http://*:5116");
 
-// Add JWT Authentication
+// ===== JWT Authentication =====
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey not configured");
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") 
+            ?? jwtSettings["SecretKey"] 
+            ?? throw new InvalidOperationException("JWT SecretKey tidak ditemukan.");
+
+
+var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") 
+            ?? jwtSettings["Issuer"];
+            
+var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") 
+            ?? jwtSettings["Audience"];
+
 var key = Encoding.ASCII.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
@@ -85,12 +131,12 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false; // Set to true in production
+    options.RequireHttpsMetadata = false; // false karena development bisa http
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ValidateIssuer = true,
         ValidIssuer = jwtSettings["Issuer"],
         ValidateAudience = true,
@@ -98,119 +144,135 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
-
-    options.Events = new JwtBearerEvents
-    {
-        OnChallenge = context =>
-        {
-            context.HandleResponse();
-            context.Response.StatusCode = 401;
-            context.Response.ContentType = "application/json";
-            var result = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                statusCode = 401,
-                message = "Unauthorized",
-                data = new { message = "Token tidak valid atau sudah expired" },
-                meta = (object?)null
-            });
-            return context.Response.WriteAsync(result);
-        },
-        OnForbidden = context =>
-        {
-            context.Response.StatusCode = 403;
-            context.Response.ContentType = "application/json";
-            var result = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                statusCode = 403,
-                message = "Forbidden",
-                data = new { message = "Anda tidak memiliki akses untuk resource ini" },
-                meta = (object?)null
-            });
-            return context.Response.WriteAsync(result);
-        }
-    };
 });
 
-// Add Authorization with custom policies
+// ===== Authorization =====
 builder.Services.AddAuthorization(options =>
 {
     options.AddCustomAuthorizationPolicies();
 });
 
-// Add Services
+// ===== Services =====
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IRolePermissionService, RolePermissionService>();
+builder.Services.AddScoped<ICallRecordService, CallRecordService>();
+builder.Services.AddScoped<IExcelExportService, ExcelExportService>();
+builder.Services.AddScoped<IInspeksiTemuanKpcService, InspeksiTemuanKpcService>();
+builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
-// Add FluentValidation
+// ===== Validators =====
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserDtoValidator>();
+builder.Services.AddScoped<IValidator<RegisterDto>, RegisterDtoValidator>();
+builder.Services.AddScoped<IValidator<CreateUserDto>, CreateUserDtoValidator>();
+builder.Services.AddScoped<IValidator<UpdateUserDto>, UpdateUserDtoValidator>();
 
-// Add CORS
+// ===== Cloudinary =====
+builder.Services.Configure<CloudinarySettings>(options =>
+{
+    options.CloudName = builder.Configuration["Cloudinary:CloudName"] ?? "dz3rhkitn";
+    options.ApiKey = builder.Configuration["Cloudinary:ApiKey"] ?? "565287517278285";
+    options.ApiSecret = builder.Configuration["Cloudinary:ApiSecret"] ?? "VB7L7av5BE-Fi6bmyxWJziW2a5M";
+});
+
+builder.Services.AddHttpContextAccessor();
+
+// ===== CORS =====
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        policy.WithOrigins(
+            "https://pmfrontend.vercel.app",
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://pmfrontend-git-*.vercel.app",
+            "https://*.vercel.app"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials();
     });
 });
 
-// Add Logging
+// ===== Logging =====
 builder.Services.AddLogging(config =>
 {
     config.AddConsole();
     config.AddDebug();
 });
 
+builder.Services.Configure<IISServerOptions>(options =>
+{
+    options.MaxRequestBodySize = int.MaxValue;
+});
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 1073741824;
+});
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ===== Middleware =====
+app.UseSwagger();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1 (DEV)"));
+}
+else
+{
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "PM MKN API V1"));
+}
+
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Your Project API V1");
-        c.RoutePrefix = string.Empty; // Makes Swagger UI available at app's root
-    });
+    app.UseSwaggerUI();
 }
 
-// Add Error Handling Middleware
-app.UseMiddleware<ErrorHandlingMiddleware>();
-
-app.UseHttpsRedirection();
-
-// Add CORS
-app.UseCors("AllowAll");
-
-// Add Authentication & Authorization
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapControllers();
-
-// Ensure Database is created and migrated
-using (var scope = app.Services.CreateScope())
+// ===== SEEDING (Development Only) =====
+if (app.Environment.IsDevelopment())
 {
+    using var scope = app.Services.CreateScope();
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
     try
     {
-        // This will create the database if it doesn't exist and apply any pending migrations
-        context.Database.EnsureCreated();
-        
-        // If you prefer migrations, use this instead:
-        // context.Database.Migrate();
-        
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("Database initialized successfully");
+        // Pastikan tabel sudah ada → JIKA BELUM, JALANKAN MIGRASI DULU!
+        // Jika Anda belum buat migrasi, ganti dengan:
+        // await context.Database.EnsureCreatedAsync();
+        // TAPI LEBIH BAIK PAKAI MIGRASI
+
+        await context.SeedInitialDataAsync(logger);
+        logger.LogInformation("✅ Seeding completed.");
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while initializing the database");
-        throw;
+        logger.LogError(ex, "❌ Seeding failed.");
     }
 }
+
+app.UseMiddleware<ErrorHandlingMiddleware>();
+app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Logger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
+app.Logger.LogInformation("DB Connection String: {Conn}", builder.Configuration.GetConnectionString("DefaultConnection"));
 
 app.Run();

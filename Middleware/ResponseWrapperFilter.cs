@@ -1,16 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using System.Reflection;
+using Pm.DTOs.Common;
+using Pm.Helper;
 
 namespace Pm.Middleware
 {
     public class ResponseWrapperFilter : IActionFilter
     {
-        public void OnActionExecuting(ActionExecutingContext context)
-        {
-            // Tidak ada aksi sebelum action dieksekusi
-        }
-
         public void OnActionExecuted(ActionExecutedContext context)
         {
             if (context.Result is ObjectResult objectResult)
@@ -20,48 +17,75 @@ namespace Pm.Middleware
 
                 object? data = null;
                 object? meta = null;
+                string message = GetDefaultMessageForStatusCode(statusCode);
 
-                // Ambil message dari HttpContext.Items jika tersedia
-                string message;
-                if (context.HttpContext.Items.ContainsKey("message"))
+                // Cek apakah ini hasil dari ApiResponse (yaitu objek dengan properti 'data')
+                var originalType = originalValue?.GetType();
+                if (originalType != null && originalValue is not string)
                 {
-                    message = context.HttpContext.Items["message"]?.ToString()
-                        ?? GetDefaultMessageForStatusCode(statusCode);
-                }
-                else
-                {
-                    var type = originalValue?.GetType();
-                    var props = type?.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                    var props = originalType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
-                    var messageProp = props?.FirstOrDefault(p =>
-                        p.Name.Equals("message", StringComparison.OrdinalIgnoreCase));
-                    message = messageProp?.GetValue(originalValue)?.ToString()
-                        ?? GetDefaultMessageForStatusCode(statusCode);
-                }
+                    var dataProp = props.FirstOrDefault(p => p.Name.Equals("data", StringComparison.OrdinalIgnoreCase));
+                    var messageProp = props.FirstOrDefault(p => p.Name.Equals("message", StringComparison.OrdinalIgnoreCase));
+                    var metaProp = props.FirstOrDefault(p => p.Name.Equals("meta", StringComparison.OrdinalIgnoreCase));
 
-                if (originalValue != null)
-                {
-                    if (originalValue is string errorString && statusCode >= 400)
+                    // Ambil message jika ada
+                    if (messageProp?.GetValue(originalValue) is string msg)
+                        message = msg;
+
+                    // Cek apakah 'data' adalah PagedResultDto<T>
+                    if (dataProp != null)
                     {
-                        message = errorString;
-                        data = null;
+                        var dataValue = dataProp.GetValue(originalValue);
+                        if (dataValue != null)
+                        {
+                            var dataType = dataValue.GetType();
+                            if (dataType.IsGenericType && dataType.GetGenericTypeDefinition() == typeof(PagedResultDto<>))
+                            {
+                                // Extract Data dan Meta dari PagedResultDto
+                                var actualData = dataType.GetProperty("Data")?.GetValue(dataValue);
+                                var actualMeta = dataType.GetProperty("Meta")?.GetValue(dataValue);
+
+                                data = actualData;
+                                meta = actualMeta;
+                            }
+                            else
+                            {
+                                // Bukan PagedResultDto, gunakan langsung
+                                data = dataValue;
+                                // Jika ada meta di dalam original object, ambil juga
+                                if (metaProp != null)
+                                    meta = metaProp.GetValue(originalValue);
+                            }
+                        }
+                        else
+                        {
+                            data = null;
+                        }
                     }
                     else
                     {
-                        var type = originalValue.GetType();
-                        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                        // Tidak ada properti 'data' → anggap seluruh originalValue adalah data
+                        data = originalValue;
 
-                        var metaProp = props.FirstOrDefault(p => p.Name.Equals("meta", StringComparison.OrdinalIgnoreCase));
-                        if (metaProp != null)
+                        // Tapi cek apakah ini PagedResultDto langsung (tanpa dibungkus ApiResponse)
+                        if (originalType.IsGenericType && originalType.GetGenericTypeDefinition() == typeof(PagedResultDto<>))
+                        {
+                            data = originalType.GetProperty("Data")?.GetValue(originalValue);
+                            meta = originalType.GetProperty("Meta")?.GetValue(originalValue);
+                        }
+                        else if (metaProp != null)
+                        {
                             meta = metaProp.GetValue(originalValue);
-
-                        var dataProp = props.FirstOrDefault(p => p.Name.Equals("data", StringComparison.OrdinalIgnoreCase));
-                        if (dataProp != null)
-                            data = dataProp.GetValue(originalValue);
-
-                        if (data == null)
-                            data = originalValue;
+                        }
                     }
+                }
+                else
+                {
+                    // Nilai primitif atau string (misal error message)
+                    if (originalValue is string str && statusCode >= 400)
+                        message = str;
+                    data = originalValue;
                 }
 
                 context.Result = new JsonResult(new
@@ -80,7 +104,7 @@ namespace Pm.Middleware
                 context.Result = new JsonResult(new
                 {
                     statusCode = 204,
-                    message = GetDefaultMessageForStatusCode(204),
+                    message = "No Content",
                     data = new { },
                     meta = (object?)null
                 })
@@ -104,6 +128,11 @@ namespace Pm.Middleware
                 500 => "Internal Server Error",
                 _ => "Error"
             };
+        }
+
+        public void OnActionExecuting(ActionExecutingContext context)
+        {
+            // Tidak ada aksi sebelum action dieksekusi
         }
     }
 }

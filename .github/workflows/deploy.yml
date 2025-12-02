@@ -1,0 +1,57 @@
+name: Deploy .NET 8 API from dev branch
+
+on:
+  push:
+    branches: [dev] # hanya aktif saat push ke branch 'dev'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: 📦 Publish .NET app
+        run: |
+          dotnet publish -c Release -r linux-x64 --self-contained false -o ./publish
+          cp appsettings.Production.json ./publish/
+
+      - name: 🧹 Clean old publish folder on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            rm -rf /www/wwwroot/apimkn.duckdns.org/publish/*
+            echo "✅ Folder publish lama dibersihkan"
+
+      - name: 📤 Upload new files via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: "./publish/*"
+          target: "/www/wwwroot/apimkn.duckdns.org/publish/"
+
+      - name: ♻️ Restart systemd service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            sudo systemctl restart pm-api
+            echo "✅ Service 'pm-api' berhasil di-restart"
+            sudo journalctl -u pm-api -n 15 --no-pager
+            echo "✅ Menampilkan 15 log terakhir dari service 'pm-api'"

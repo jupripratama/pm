@@ -17,10 +17,297 @@ namespace Pm.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.9")
+                .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
+
+            modelBuilder.Entity("Pm.Models.ActivityLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ActivityLogs");
+                });
+
+            modelBuilder.Entity("Pm.Models.CallRecord", b =>
+                {
+                    b.Property<int>("CallRecordId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("CallRecordId"));
+
+                    b.Property<int>("CallCloseReason")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CallDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("CallTime")
+                        .HasColumnType("time(0)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("CallRecordId");
+
+                    b.HasIndex("CallCloseReason")
+                        .HasDatabaseName("IX_CallRecord_CloseReason");
+
+                    b.HasIndex("CallDate")
+                        .HasDatabaseName("IX_CallRecord_Date");
+
+                    b.HasIndex("CallDate", "CallTime")
+                        .HasDatabaseName("IX_CallRecord_HourQuery");
+
+                    b.ToTable("CallRecords");
+                });
+
+            modelBuilder.Entity("Pm.Models.CallSummary", b =>
+                {
+                    b.Property<int>("CallSummaryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("CallSummaryId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("HourGroup")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OthersCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("OthersPercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("SummaryDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("SysBusyCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("SysBusyPercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int>("TEBusyCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TEBusyPercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int>("TotalQty")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("CallSummaryId");
+
+                    b.HasIndex("SummaryDate", "HourGroup")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CallSummary_DateHour");
+
+                    b.ToTable("CallSummaries");
+                });
+
+            modelBuilder.Entity("Pm.Models.FileImportHistory", b =>
+                {
+                    b.Property<int>("ImportHistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("ImportHistoryId"));
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("ImportDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("RecordCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("ImportHistoryId");
+
+                    b.ToTable("FileImportHistories");
+                });
+
+            modelBuilder.Entity("Pm.Models.FleetStatistic", b =>
+                {
+                    b.Property<int>("FleetStatisticId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("FleetStatisticId"));
+
+                    b.Property<int>("CallCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CallDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("CalledFleet")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("CallerFleet")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("TotalDuration")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("FleetStatisticId");
+
+                    b.ToTable("FleetStatistics");
+                });
+
+            modelBuilder.Entity("Pm.Models.InspeksiTemuanKpc", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FotoHasilUrls")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("FotoTemuanUrls")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Inspector")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("KategoriTemuan")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Keterangan")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("NoFollowUp")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PerbaikanDilakukan")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PicPelaksana")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Ruang")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("TanggalClosed")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TanggalPerbaikan")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TanggalSelesaiPerbaikan")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("TanggalTargetSelesai")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("TanggalTemuan")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Temuan")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("DeletedBy");
+
+                    b.HasIndex("UpdatedBy");
+
+                    b.ToTable("InspeksiTemuanKpcs");
+                });
 
             modelBuilder.Entity("Pm.Models.Permission", b =>
                 {
@@ -52,104 +339,6 @@ namespace Pm.Migrations
                         .IsUnique();
 
                     b.ToTable("Permissions");
-
-                    b.HasData(
-                        new
-                        {
-                            PermissionId = 1,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(407),
-                            Description = "View all users",
-                            Group = "User",
-                            PermissionName = "user.view-any"
-                        },
-                        new
-                        {
-                            PermissionId = 2,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(978),
-                            Description = "View user detail",
-                            Group = "User",
-                            PermissionName = "user.view"
-                        },
-                        new
-                        {
-                            PermissionId = 3,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(982),
-                            Description = "Create new user",
-                            Group = "User",
-                            PermissionName = "user.create"
-                        },
-                        new
-                        {
-                            PermissionId = 4,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(985),
-                            Description = "Update user",
-                            Group = "User",
-                            PermissionName = "user.update"
-                        },
-                        new
-                        {
-                            PermissionId = 5,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(992),
-                            Description = "Delete user",
-                            Group = "User",
-                            PermissionName = "user.delete"
-                        },
-                        new
-                        {
-                            PermissionId = 6,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(995),
-                            Description = "View all roles",
-                            Group = "Role",
-                            PermissionName = "role.view-any"
-                        },
-                        new
-                        {
-                            PermissionId = 7,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(998),
-                            Description = "View role detail",
-                            Group = "Role",
-                            PermissionName = "role.view"
-                        },
-                        new
-                        {
-                            PermissionId = 8,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(1002),
-                            Description = "Create new role",
-                            Group = "Role",
-                            PermissionName = "role.create"
-                        },
-                        new
-                        {
-                            PermissionId = 9,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(1014),
-                            Description = "Update role",
-                            Group = "Role",
-                            PermissionName = "role.update"
-                        },
-                        new
-                        {
-                            PermissionId = 10,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(1017),
-                            Description = "Delete role",
-                            Group = "Role",
-                            PermissionName = "role.delete"
-                        },
-                        new
-                        {
-                            PermissionId = 11,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(1020),
-                            Description = "View permissions",
-                            Group = "Permission",
-                            PermissionName = "permission.view"
-                        },
-                        new
-                        {
-                            PermissionId = 12,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(1023),
-                            Description = "Edit permissions",
-                            Group = "Permission",
-                            PermissionName = "permission.edit"
-                        });
                 });
 
             modelBuilder.Entity("Pm.Models.Role", b =>
@@ -181,32 +370,6 @@ namespace Pm.Migrations
                         .IsUnique();
 
                     b.ToTable("Roles");
-
-                    b.HasData(
-                        new
-                        {
-                            RoleId = 1,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 11, DateTimeKind.Utc).AddTicks(1068),
-                            Description = "Full system access",
-                            IsActive = true,
-                            RoleName = "Super Admin"
-                        },
-                        new
-                        {
-                            RoleId = 2,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 11, DateTimeKind.Utc).AddTicks(1707),
-                            Description = "Administrative access",
-                            IsActive = true,
-                            RoleName = "Admin"
-                        },
-                        new
-                        {
-                            RoleId = 3,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 11, DateTimeKind.Utc).AddTicks(1775),
-                            Description = "Standard user access",
-                            IsActive = true,
-                            RoleName = "User"
-                        });
                 });
 
             modelBuilder.Entity("Pm.Models.RolePermission", b =>
@@ -234,127 +397,6 @@ namespace Pm.Migrations
                         .IsUnique();
 
                     b.ToTable("RolePermissions");
-
-                    b.HasData(
-                        new
-                        {
-                            RolePermissionId = 1,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(4577),
-                            PermissionId = 1,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 2,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5140),
-                            PermissionId = 2,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 3,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5142),
-                            PermissionId = 3,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 4,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5144),
-                            PermissionId = 4,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 5,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5146),
-                            PermissionId = 5,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 6,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5365),
-                            PermissionId = 6,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 7,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5367),
-                            PermissionId = 7,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 8,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5369),
-                            PermissionId = 8,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 9,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5370),
-                            PermissionId = 9,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 10,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5374),
-                            PermissionId = 10,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 11,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5375),
-                            PermissionId = 11,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 12,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5377),
-                            PermissionId = 12,
-                            RoleId = 1
-                        },
-                        new
-                        {
-                            RolePermissionId = 13,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5380),
-                            PermissionId = 1,
-                            RoleId = 2
-                        },
-                        new
-                        {
-                            RolePermissionId = 14,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5382),
-                            PermissionId = 2,
-                            RoleId = 2
-                        },
-                        new
-                        {
-                            RolePermissionId = 15,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5385),
-                            PermissionId = 3,
-                            RoleId = 2
-                        },
-                        new
-                        {
-                            RolePermissionId = 16,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5387),
-                            PermissionId = 4,
-                            RoleId = 2
-                        },
-                        new
-                        {
-                            RolePermissionId = 17,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 13, DateTimeKind.Utc).AddTicks(5920),
-                            PermissionId = 2,
-                            RoleId = 3
-                        });
                 });
 
             modelBuilder.Entity("Pm.Models.User", b =>
@@ -369,16 +411,18 @@ namespace Pm.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
 
                     b.Property<DateTime?>("LastLogin")
                         .HasColumnType("datetime(6)");
@@ -388,6 +432,10 @@ namespace Pm.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<int>("RoleId")
                         .HasColumnType("int");
 
@@ -396,33 +444,48 @@ namespace Pm.Migrations
 
                     b.Property<string>("Username")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("UserId");
 
-                    b.HasIndex("Email")
-                        .IsUnique();
-
                     b.HasIndex("RoleId");
 
-                    b.HasIndex("Username")
-                        .IsUnique();
-
                     b.ToTable("Users");
+                });
 
-                    b.HasData(
-                        new
-                        {
-                            UserId = 1,
-                            CreatedAt = new DateTime(2025, 9, 24, 6, 28, 14, 705, DateTimeKind.Utc).AddTicks(4067),
-                            Email = "admin@yourdomain.com",
-                            FullName = "System Administrator",
-                            IsActive = true,
-                            PasswordHash = "$2a$11$ZVyilLKcyieXPCf5bNKoCOatxdiMkzP/nDz/pilpBEFuV6qjpQdlq",
-                            RoleId = 1,
-                            Username = "admin"
-                        });
+            modelBuilder.Entity("Pm.Models.ActivityLog", b =>
+                {
+                    b.HasOne("Pm.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pm.Models.InspeksiTemuanKpc", b =>
+                {
+                    b.HasOne("Pm.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pm.Models.User", "DeletedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeletedBy");
+
+                    b.HasOne("Pm.Models.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedBy");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("DeletedByUser");
+
+                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("Pm.Models.RolePermission", b =>

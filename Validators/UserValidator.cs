@@ -15,7 +15,7 @@ namespace Pm.Validators
             RuleFor(x => x.Username)
                 .NotEmpty().WithMessage("Username wajib diisi")
                 .MaximumLength(50).WithMessage("Username maksimal 50 karakter")
-                .MustAsync(async (username, cancellation) => !await _userService.UsernameExistsAsync(username))
+                .MustAsync(async (username, cancellation) => !await _userService.IsUsernameExistsAsync(username))
                 .WithMessage("Username sudah digunakan");
 
             RuleFor(x => x.Password)
@@ -30,13 +30,13 @@ namespace Pm.Validators
             RuleFor(x => x.Email)
                 .EmailAddress().WithMessage("Format email tidak valid")
                 .MaximumLength(100).WithMessage("Email maksimal 100 karakter")
-                .MustAsync(async (email, cancellation) => 
-                    string.IsNullOrEmpty(email) || !await _userService.EmailExistsAsync(email))
+                .MustAsync(async (email, cancellation) =>
+                    string.IsNullOrEmpty(email) || !await _userService.IsEmailExistsAsync(email))
                 .WithMessage("Email sudah digunakan");
 
             RuleFor(x => x.RoleId)
                 .NotNull().WithMessage("Role wajib dipilih")
-                .MustAsync(async (roleId, cancellation) => 
+                .MustAsync(async (roleId, cancellation) =>
                     roleId == null || await _userService.RoleExistsAsync(roleId.Value))
                 .WithMessage("Role tidak valid");
 
@@ -72,7 +72,7 @@ namespace Pm.Validators
                 .MaximumLength(100).WithMessage("Email maksimal 100 karakter");
 
             RuleFor(x => x.RoleId)
-                .MustAsync(async (roleId, cancellation) => 
+                .MustAsync(async (roleId, cancellation) =>
                     roleId == null || await _userService.RoleExistsAsync(roleId.Value))
                 .WithMessage("Role tidak valid");
 

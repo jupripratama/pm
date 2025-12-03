@@ -1,9 +1,8 @@
-name: Deploy .NET 8 API from dev branch
+name: Deploy .NET 8 API from main branch
 
 on:
   push:
-    branches: [main] # hanya aktif saat push ke branch 'dev'
-
+    branches: [main] # hanya aktif saat push ke branch 'main'
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -30,7 +29,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
-            rm -rf /www/wwwroot/apimkn.duckdns.org/publish/*
+            rm -rf /www/wwwroot/api.mknops.web.id/publish/*
             echo "✅ Folder publish lama dibersihkan"
 
       - name: 📤 Upload new files via SCP
@@ -41,7 +40,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
           source: "./publish/*"
-          target: "/www/wwwroot/apimkn.duckdns.org/publish/"
+          target: "/www/wwwroot/api.mknops.web.id/publish/"
 
       - name: ♻️ Restart systemd service
         uses: appleboy/ssh-action@v1.0.3

@@ -188,7 +188,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(
-            "https://pmfrontend.vercel.app",
+            "https://pm.mknops.web.id",
             "http://localhost:3000",
             "http://localhost:5173",
             "https://pmfrontend-git-*.vercel.app",

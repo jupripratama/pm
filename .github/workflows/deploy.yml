@@ -2,7 +2,8 @@ name: Deploy .NET 8 API from main branch
 
 on:
   push:
-    branches: [main] # hanya aktif saat push ke branch 'main'
+    branches: [main]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -39,8 +40,39 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
-          source: "./publish/*"
+          source: "./publish/"
           target: "/www/wwwroot/api.mknops.web.id/publish/"
+          strip_components: 1 # Biar gak bikin subfolder publish/publish
+          overwrite: true
+
+      - name: 🔧 Fix folder structure (jaga-jaga)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            # Kalau masih ada folder publish/publish, fix
+            if [ -d "/www/wwwroot/api.mknops.web.id/publish/publish" ]; then
+              echo "⚠️  Masih ada folder publish/publish, fixing..."
+              mv /www/wwwroot/api.mknops.web.id/publish/publish/* /www/wwwroot/api.mknops.web.id/publish/
+              rmdir /www/wwwroot/api.mknops.web.id/publish/publish
+              echo "✅ Fixed"
+            fi
+
+      - name: ✅ Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            echo "=== Cek Pm.dll ==="
+            ls -la /www/wwwroot/api.mknops.web.id/publish/Pm.dll
+            echo "=== Isi folder ==="
+            ls -la /www/wwwroot/api.mknops.web.id/publish/
 
       - name: ♻️ Restart systemd service
         uses: appleboy/ssh-action@v1.0.3
@@ -51,6 +83,5 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             sudo systemctl restart pm-api
-            echo "✅ Service 'pm-api' berhasil di-restart"
-            sudo journalctl -u pm-api -n 15 --no-pager
-            echo "✅ Menampilkan 15 log terakhir dari service 'pm-api'"
+            echo "✅ Service 'pm-api' di-restart"
+            sudo journalctl -u pm-api -n 10 --no-pager

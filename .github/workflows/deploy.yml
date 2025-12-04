@@ -74,14 +74,32 @@ jobs:
             echo "=== Isi folder ==="
             ls -la /www/wwwroot/api.mknops.web.id/publish/
 
-      - name: ♻️ Restart systemd service
+      - name: ♻️ Restart systemd service (with sudo fix)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
+          envs: SSH_PASSWORD=${{ secrets.SSH_PASSWORD }}
           script: |
-            sudo systemctl restart pm-api
+            # Method 1: Coba restart service dengan sudo -S (baca password dari stdin)
+            echo "Restarting pm-api service..."
+            echo "$SSH_PASSWORD" | sudo -S systemctl restart pm-api
+
+            # Method 2: Kalau masih gagal, coba daemon-reload dulu
+            if ! systemctl is-active --quiet pm-api; then
+              echo "Service masih tidak aktif, coba daemon-reload..."
+              echo "$SSH_PASSWORD" | sudo -S systemctl daemon-reload
+              echo "$SSH_PASSWORD" | sudo -S systemctl restart pm-api
+            fi
+
             echo "✅ Service 'pm-api' di-restart"
-            sudo journalctl -u pm-api -n 10 --no-pager
+
+            # Cek status service
+            echo "=== Status service ==="
+            echo "$SSH_PASSWORD" | sudo -S systemctl status pm-api --no-pager || true
+
+            # Tampilkan log terakhir
+            echo "=== 10 log terakhir ==="
+            echo "$SSH_PASSWORD" | sudo -S journalctl -u pm-api -n 10 --no-pager || true
